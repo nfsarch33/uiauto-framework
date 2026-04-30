@@ -1,0 +1,53 @@
+{
+  "auth": {
+    "token_env": "WC_SESSION_COOKIE",
+    "type": "cookie"
+  },
+  "base_url": "https://shop.example.com",
+  "description": "Personal WooCommerce store on DreamHost",
+  "metadata": {
+    "hosting": "DreamHost",
+    "platform": "WordPress + WooCommerce"
+  },
+  "name": "WooCommerce Store",
+  "pages": [
+    {
+      "name": "Shop",
+      "path": "/shop",
+      "selectors": {
+        "add_to_cart": ".add_to_cart_button",
+        "pagination": ".woocommerce-pagination",
+        "price": ".price",
+        "product_item": ".product",
+        "product_list": ".products"
+      }
+    },
+    {
+      "name": "Product Detail",
+      "path": "/product/{slug}",
+      "selectors": {
+        "add_to_cart": ".single_add_to_cart_button",
+        "description": ".woocommerce-product-details__short-description",
+        "quantity": "input.qty",
+        "reviews": "#reviews",
+        "title": ".product_title"
+      }
+    },
+    {
+      "name": "Cart",
+      "path": "/cart",
+      "selectors": {
+        "cart_table": ".woocommerce-cart-form",
+        "checkout_btn": ".checkout-button",
+        "coupon_field": "#coupon_code",
+        "update_cart": "[name='update_cart']"
+      }
+    }
+  ],
+  "tags": [
+    "ecommerce",
+    "woocommerce",
+    "wordpress"
+  ]
+}
+

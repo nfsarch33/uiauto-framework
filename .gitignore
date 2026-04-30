@@ -1,0 +1,13 @@
+bin/
+.envrc
+.env
+.env.local
+*.test
+*.out
+*.cover
+*.coverprofile
+node_modules/
+dist/
+.DS_Store
+.idea/
+.vscode/

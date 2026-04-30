@@ -1,0 +1,39 @@
+{
+  "auth": {
+    "token_env": "D2L_SESSION_TOKEN",
+    "type": "sso"
+  },
+  "base_url": "https://d2l.deakin.edu.au",
+  "description": "Deakin University D2L Brightspace LMS",
+  "metadata": {
+    "platform": "D2L Brightspace",
+    "requires_vpn": "false"
+  },
+  "name": "D2L Brightspace",
+  "pages": [
+    {
+      "name": "Dashboard",
+      "path": "/d2l/home",
+      "selectors": {
+        "course_list": ".d2l-course-tile-grid",
+        "nav": ".d2l-navigation",
+        "profile_menu": ".d2l-navigation-s-personal-menu"
+      }
+    },
+    {
+      "name": "Course Content",
+      "path": "/d2l/le/content/{courseId}/Home",
+      "selectors": {
+        "content_tree": ".d2l-le-TreeAccordion",
+        "module_list": ".d2l-datalist",
+        "topic_link": ".d2l-link"
+      }
+    }
+  ],
+  "tags": [
+    "lms",
+    "education",
+    "sso"
+  ]
+}
+

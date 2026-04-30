@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test (short, no live browser/DB)
+        run: CI=1 go test -short -count=1 -timeout 5m ./...
+
+  lint-no-target-strings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbidden target-specific strings
+        run: |
+          MATCHES=$(grep -ril -E 'zendesk|amazon[ -]connect|\bz3n\b|cc-nl|lastpass|\bccp\b|\bzaf\b' \
+              pkg/ cmd/ examples/ docs/ 2>/dev/null || true)
+          if [ -n "$MATCHES" ]; then
+              echo "ERROR: target-specific strings found:"
+              echo "$MATCHES"
+              exit 1
+          fi
+          echo "OK: framework is generic."

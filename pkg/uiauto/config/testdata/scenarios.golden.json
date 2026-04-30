@@ -1,0 +1,32 @@
+[
+  {
+    "action_types": [
+      "verify",
+      "click"
+    ],
+    "action_values": [
+      "",
+      ""
+    ],
+    "id": "smoke-001",
+    "name": "Example.com smoke",
+    "natural_language": [
+      "Verify the example.com landing heading is present",
+      "Click the More information link in the body"
+    ],
+    "page_objects": [
+      "page.heading",
+      "page.more_link"
+    ],
+    "selectors_used": [
+      "h1",
+      "a[href*=\"iana.org\"]"
+    ],
+    "source": "framework",
+    "tags": [
+      "smoke",
+      "navigation"
+    ]
+  }
+]
+

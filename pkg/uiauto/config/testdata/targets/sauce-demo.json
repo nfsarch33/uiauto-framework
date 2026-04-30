@@ -1,0 +1,67 @@
+{
+  "auth": {
+    "password": "secret_sauce",
+    "type": "form",
+    "username": "standard_user"
+  },
+  "base_url": "https://www.saucedemo.com",
+  "description": "Standard Sauce Labs demo e-commerce app for UI testing",
+  "name": "Sauce Demo",
+  "pages": [
+    {
+      "actions": [
+        {
+          "selector": "#user-name",
+          "type": "fill",
+          "value": "standard_user"
+        },
+        {
+          "selector": "#password",
+          "type": "fill",
+          "value": "secret_sauce"
+        },
+        {
+          "selector": "#login-button",
+          "type": "click",
+          "wait_ms": 2000
+        }
+      ],
+      "name": "Login",
+      "path": "/",
+      "selectors": {
+        "error_msg": "[data-test='error']",
+        "login_btn": "#login-button",
+        "password": "#password",
+        "username": "#user-name"
+      }
+    },
+    {
+      "name": "Inventory",
+      "path": "/inventory.html",
+      "selectors": {
+        "add_to_cart": "[data-test^='add-to-cart']",
+        "cart_badge": ".shopping_cart_badge",
+        "cart_link": ".shopping_cart_link",
+        "inventory_list": ".inventory_list",
+        "item_name": ".inventory_item_name",
+        "sort_dropdown": "[data-test='product-sort-container']"
+      }
+    },
+    {
+      "name": "Cart",
+      "path": "/cart.html",
+      "selectors": {
+        "cart_item": ".cart_item",
+        "cart_list": ".cart_list",
+        "checkout_btn": "[data-test='checkout']",
+        "continue_btn": "[data-test='continue-shopping']"
+      }
+    }
+  ],
+  "tags": [
+    "ecommerce",
+    "demo",
+    "benchmark"
+  ]
+}
+

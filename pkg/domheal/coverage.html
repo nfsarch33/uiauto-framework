@@ -1,0 +1,841 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>domheal: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/nfsarch33/ai-agent-business-stack/go/internal/domheal/circuit_breaker.go (96.4%)</option>
+				
+				<option value="file1">github.com/nfsarch33/ai-agent-business-stack/go/internal/domheal/drift_detector.go (100.0%)</option>
+				
+				<option value="file2">github.com/nfsarch33/ai-agent-business-stack/go/internal/domheal/fingerprint_matcher.go (98.3%)</option>
+				
+				<option value="file3">github.com/nfsarch33/ai-agent-business-stack/go/internal/domheal/repair_log.go (100.0%)</option>
+				
+				<option value="file4">github.com/nfsarch33/ai-agent-business-stack/go/internal/domheal/structural_matcher.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package domheal
+
+import (
+        "sync"
+        "time"
+)
+
+// CircuitBreaker tracks consecutive failures and opens when threshold is reached.
+// After cooldown seconds, it transitions to half-open and allows a single probe.
+type CircuitBreaker struct {
+        mu            sync.Mutex
+        failures      int
+        threshold     int
+        cooldownSec   int
+        state         string // "closed", "open", "half-open"
+        lastFailureAt int64
+}
+
+// NewCircuitBreaker creates a circuit breaker with threshold consecutive failures
+// and cooldown seconds before half-open.
+func NewCircuitBreaker(threshold, cooldownSec int) *CircuitBreaker <span class="cov8" title="1">{
+        return &amp;CircuitBreaker{
+                threshold:   threshold,
+                cooldownSec: cooldownSec,
+                state:       "closed",
+        }
+}</span>
+
+// Allow returns true if the circuit breaker permits the request.
+func (cb *CircuitBreaker) Allow() bool <span class="cov8" title="1">{
+        cb.mu.Lock()
+        defer cb.mu.Unlock()
+
+        switch cb.state </span>{
+        case "closed":<span class="cov8" title="1">
+                return true</span>
+        case "half-open":<span class="cov0" title="0">
+                return true</span>
+        case "open":<span class="cov8" title="1">
+                elapsed := time.Now().Unix() - cb.lastFailureAt
+                if elapsed &gt;= int64(cb.cooldownSec) </span><span class="cov8" title="1">{
+                        cb.state = "half-open"
+                        return true
+                }</span>
+                <span class="cov8" title="1">return false</span>
+        }
+        <span class="cov8" title="1">return true</span>
+}
+
+// RecordSuccess resets the circuit breaker.
+func (cb *CircuitBreaker) RecordSuccess() <span class="cov8" title="1">{
+        cb.mu.Lock()
+        defer cb.mu.Unlock()
+        cb.failures = 0
+        cb.state = "closed"
+}</span>
+
+// RecordFailure increments failure count and opens the circuit if threshold is reached.
+func (cb *CircuitBreaker) RecordFailure() <span class="cov8" title="1">{
+        cb.mu.Lock()
+        defer cb.mu.Unlock()
+        cb.failures++
+        cb.lastFailureAt = time.Now().Unix()
+        if cb.failures &gt;= cb.threshold </span><span class="cov8" title="1">{
+                cb.state = "open"
+        }</span>
+}
+
+// State returns the current circuit breaker state.
+func (cb *CircuitBreaker) State() string <span class="cov8" title="1">{
+        cb.mu.Lock()
+        defer cb.mu.Unlock()
+        return cb.state
+}</span>
+
+// Failures returns the current consecutive failure count.
+func (cb *CircuitBreaker) Failures() int <span class="cov8" title="1">{
+        cb.mu.Lock()
+        defer cb.mu.Unlock()
+        return cb.failures
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package domheal
+
+import (
+        "encoding/json"
+        "fmt"
+        "os"
+        "path/filepath"
+        "strings"
+        "sync"
+)
+
+// DriftDetector tracks page content hashes and detects structural changes.
+type DriftDetector struct {
+        baseDir string
+        hashes  map[string]string
+        mu      sync.RWMutex
+}
+
+// NewDriftDetector creates a drift detector that persists hashes in baseDir.
+func NewDriftDetector(baseDir string) *DriftDetector <span class="cov8" title="1">{
+        return &amp;DriftDetector{
+                baseDir: baseDir,
+                hashes:  make(map[string]string),
+        }
+}</span>
+
+// CheckAndUpdate compares the current HTML content against the stored snapshot.
+// Returns true if drift was detected (content changed), false otherwise.
+func (dd *DriftDetector) CheckAndUpdate(pageID, html string) (bool, error) <span class="cov8" title="1">{
+        hash := simpleHash(html)
+        dd.mu.Lock()
+        prev, exists := dd.hashes[pageID]
+        dd.hashes[pageID] = hash
+        dd.mu.Unlock()
+
+        if !exists </span><span class="cov8" title="1">{
+                return false, nil
+        }</span>
+        <span class="cov8" title="1">return prev != hash, nil</span>
+}
+
+// Save persists the current hash map to a JSON file in baseDir.
+func (dd *DriftDetector) Save() error <span class="cov8" title="1">{
+        if dd.baseDir == "" </span><span class="cov8" title="1">{
+                return nil // In-memory only
+        }</span>
+        <span class="cov8" title="1">if err := os.MkdirAll(dd.baseDir, 0755); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">path := filepath.Join(dd.baseDir, "drift-hashes.json")
+        dd.mu.RLock()
+        data, _ := json.MarshalIndent(dd.hashes, "", "  ")
+        dd.mu.RUnlock()
+        return os.WriteFile(path, data, 0644)</span>
+}
+
+// Load reads the hash map from the JSON file in baseDir.
+func (dd *DriftDetector) Load() error <span class="cov8" title="1">{
+        if dd.baseDir == "" </span><span class="cov8" title="1">{
+                return nil
+        }</span>
+        <span class="cov8" title="1">path := filepath.Join(dd.baseDir, "drift-hashes.json")
+        data, err := os.ReadFile(path)
+        if err != nil </span><span class="cov8" title="1">{
+                if os.IsNotExist(err) </span><span class="cov8" title="1">{
+                        return nil // OK if file doesn't exist yet
+                }</span>
+                <span class="cov8" title="1">return err</span>
+        }
+        <span class="cov8" title="1">dd.mu.Lock()
+        defer dd.mu.Unlock()
+        return json.Unmarshal(data, &amp;dd.hashes)</span>
+}
+
+// HashCount returns the number of tracked page hashes.
+func (dd *DriftDetector) HashCount() int <span class="cov8" title="1">{
+        dd.mu.RLock()
+        defer dd.mu.RUnlock()
+        return len(dd.hashes)
+}</span>
+
+func simpleHash(content string) string <span class="cov8" title="1">{
+        normalized := strings.TrimSpace(strings.ToLower(content))
+        return fmt.Sprintf("%x", len(normalized)*31+hashString(normalized))
+}</span>
+
+func hashString(s string) int <span class="cov8" title="1">{
+        h := 0
+        for _, c := range s </span><span class="cov8" title="1">{
+                h = 31*h + int(c)
+        }</span>
+        <span class="cov8" title="1">return h</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package domheal
+
+import (
+        "regexp"
+        "sort"
+        "strings"
+        "sync"
+
+        "go.uber.org/zap"
+)
+
+// DOMFingerprint is an enhanced structural signature that includes content heuristics
+// for locating elements after full DOM restructures.
+type DOMFingerprint struct {
+        StructuralSignature
+        TextPatterns  []string       `json:"text_patterns"`
+        DataAttrs     map[string]int `json:"data_attrs"`
+        IDFingerprint string         `json:"id_fingerprint"`
+        RoleMap       map[string]int `json:"role_map"`
+        FormElements  int            `json:"form_elements"`
+        LinkDensity   float64        `json:"link_density"`
+}
+
+var (
+        dataAttrRe = regexp.MustCompile(`data-([a-z0-9-]+)\s*=`)
+        idAttrRe   = regexp.MustCompile(`\s+id\s*=\s*["']([^"']+)["']`)
+        roleAttrRe = regexp.MustCompile(`role\s*=\s*["']([^"']+)["']`)
+        formTagRe  = regexp.MustCompile(`&lt;\s*(input|select|textarea|button)[^&gt;]*&gt;`)
+        anchorRe   = regexp.MustCompile(`&lt;\s*a\b[^&gt;]*&gt;`)
+)
+
+// ParseDOMFingerprint builds a comprehensive fingerprint from raw HTML,
+// including text patterns, data attributes, ARIA roles, and form density.
+func ParseDOMFingerprint(html string) DOMFingerprint <span class="cov8" title="1">{
+        fp := DOMFingerprint{
+                StructuralSignature: ParseStructuralSignature(html),
+                DataAttrs:           make(map[string]int),
+                RoleMap:             make(map[string]int),
+        }
+        if html == "" </span><span class="cov8" title="1">{
+                return fp
+        }</span>
+
+        <span class="cov8" title="1">lower := strings.ToLower(html)
+
+        for _, m := range dataAttrRe.FindAllStringSubmatch(lower, -1) </span><span class="cov8" title="1">{
+                fp.DataAttrs[m[1]]++
+        }</span>
+
+        <span class="cov8" title="1">ids := idAttrRe.FindAllStringSubmatch(lower, -1)
+        idList := make([]string, 0, len(ids))
+        for _, m := range ids </span><span class="cov8" title="1">{
+                idList = append(idList, m[1])
+        }</span>
+        <span class="cov8" title="1">sort.Strings(idList)
+        fp.IDFingerprint = strings.Join(idList, ",")
+
+        for _, m := range roleAttrRe.FindAllStringSubmatch(lower, -1) </span><span class="cov8" title="1">{
+                fp.RoleMap[m[1]]++
+        }</span>
+
+        <span class="cov8" title="1">fp.FormElements = len(formTagRe.FindAllString(lower, -1))
+
+        anchorCount := len(anchorRe.FindAllString(lower, -1))
+        if fp.TotalNodes &gt; 0 </span><span class="cov8" title="1">{
+                fp.LinkDensity = float64(anchorCount) / float64(fp.TotalNodes)
+        }</span>
+
+        <span class="cov8" title="1">fp.TextPatterns = ExtractTextPatterns(html)
+
+        return fp</span>
+}
+
+// extractTextPatterns pulls short, distinctive text snippets from visible content.
+// These act as content anchors that survive structural changes.
+func ExtractTextPatterns(html string) []string <span class="cov8" title="1">{
+        stripped := stripHTMLTags(html)
+        stripped = strings.Join(strings.Fields(stripped), " ")
+
+        if len(stripped) &lt; 20 </span><span class="cov8" title="1">{
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">words := strings.Fields(stripped)
+        patterns := make(map[string]bool)
+        // Slide a 4-word window to capture distinctive phrases (capped at 20).
+        for i := 0; i+3 &lt; len(words) &amp;&amp; len(patterns) &lt; 20; i += 4 </span><span class="cov8" title="1">{
+                phrase := strings.Join(words[i:i+4], " ")
+                if len(phrase) &gt;= 15 &amp;&amp; len(phrase) &lt;= 80 </span><span class="cov8" title="1">{
+                        patterns[strings.ToLower(phrase)] = true
+                }</span>
+        }
+
+        <span class="cov8" title="1">out := make([]string, 0, len(patterns))
+        for p := range patterns </span><span class="cov8" title="1">{
+                out = append(out, p)
+        }</span>
+        <span class="cov8" title="1">sort.Strings(out)
+        return out</span>
+}
+
+// DOMFingerprintSimilarity computes a weighted similarity score between two fingerprints.
+// Weights: structure (0.4), classes (0.15), data-attrs (0.15), roles (0.1), text (0.2).
+func DOMFingerprintSimilarity(a, b DOMFingerprint) float64 <span class="cov8" title="1">{
+        structSim := StructuralSimilarity(a.StructuralSignature, b.StructuralSignature)
+        classSim := StringSimilarity(a.ClassFingerprint, b.ClassFingerprint)
+        dataSim := MapSimilarity(a.DataAttrs, b.DataAttrs)
+        roleSim := MapSimilarity(a.RoleMap, b.RoleMap)
+        textSim := TextPatternOverlap(a.TextPatterns, b.TextPatterns)
+
+        return 0.40*structSim + 0.15*classSim + 0.15*dataSim + 0.10*roleSim + 0.20*textSim
+}</span>
+
+func StringSimilarity(a, b string) float64 <span class="cov8" title="1">{
+        if a == b </span><span class="cov8" title="1">{
+                return 1.0
+        }</span>
+        <span class="cov8" title="1">if a == "" || b == "" </span><span class="cov8" title="1">{
+                return 0.0
+        }</span>
+        <span class="cov8" title="1">aSet := make(map[string]bool)
+        for _, c := range strings.Split(a, ",") </span><span class="cov8" title="1">{
+                aSet[strings.TrimSpace(c)] = true
+        }</span>
+        <span class="cov8" title="1">bSet := make(map[string]bool)
+        for _, c := range strings.Split(b, ",") </span><span class="cov8" title="1">{
+                bSet[strings.TrimSpace(c)] = true
+        }</span>
+        <span class="cov8" title="1">inter := 0
+        for k := range aSet </span><span class="cov8" title="1">{
+                if bSet[k] </span><span class="cov0" title="0">{
+                        inter++
+                }</span>
+        }
+        <span class="cov8" title="1">union := len(aSet) + len(bSet) - inter
+        return float64(inter) / float64(union)</span>
+}
+
+func MapSimilarity(a, b map[string]int) float64 <span class="cov8" title="1">{
+        if len(a) == 0 &amp;&amp; len(b) == 0 </span><span class="cov8" title="1">{
+                return 1.0
+        }</span>
+        <span class="cov8" title="1">allKeys := make(map[string]bool)
+        for k := range a </span><span class="cov8" title="1">{
+                allKeys[k] = true
+        }</span>
+        <span class="cov8" title="1">for k := range b </span><span class="cov8" title="1">{
+                allKeys[k] = true
+        }</span>
+        <span class="cov8" title="1">inter := 0
+        union := 0
+        for k := range allKeys </span><span class="cov8" title="1">{
+                ca, cb := a[k], b[k]
+                if ca &lt; cb </span><span class="cov8" title="1">{
+                        inter += ca
+                        union += cb
+                }</span> else<span class="cov8" title="1"> {
+                        inter += cb
+                        union += ca
+                }</span>
+        }
+        <span class="cov8" title="1">if union == 0 </span><span class="cov0" title="0">{
+                return 1.0 // Can happen if maps only contain 0 values
+        }</span>
+        <span class="cov8" title="1">return float64(inter) / float64(union)</span>
+}
+
+func TextPatternOverlap(a, b []string) float64 <span class="cov8" title="1">{
+        if len(a) == 0 &amp;&amp; len(b) == 0 </span><span class="cov8" title="1">{
+                return 1.0
+        }</span>
+        <span class="cov8" title="1">if len(a) == 0 || len(b) == 0 </span><span class="cov8" title="1">{
+                return 0.0
+        }</span>
+        <span class="cov8" title="1">aSet := make(map[string]bool, len(a))
+        for _, p := range a </span><span class="cov8" title="1">{
+                aSet[p] = true
+        }</span>
+        <span class="cov8" title="1">match := 0
+        for _, p := range b </span><span class="cov8" title="1">{
+                if aSet[p] </span><span class="cov8" title="1">{
+                        match++
+                }</span>
+        }
+        <span class="cov8" title="1">union := len(a) + len(b) - match
+        return float64(match) / float64(union)</span>
+}
+
+// FingerprintMatcher extends StructuralMatcher with content-based fingerprinting.
+type FingerprintMatcher struct {
+        known     map[string]DOMFingerprint
+        threshold float64
+        logger    *zap.Logger
+        mu        sync.RWMutex
+}
+
+// NewFingerprintMatcher creates a matcher using the V2 DOMFingerprint algorithm.
+func NewFingerprintMatcher(threshold float64, logger *zap.Logger) *FingerprintMatcher <span class="cov8" title="1">{
+        if threshold &lt;= 0 </span><span class="cov8" title="1">{
+                threshold = 0.7
+        }</span>
+        <span class="cov8" title="1">return &amp;FingerprintMatcher{
+                known:     make(map[string]DOMFingerprint),
+                threshold: threshold,
+                logger:    logger,
+        }</span>
+}
+
+// CheckAndUpdate compares current HTML against stored DOMFingerprint baseline.
+func (fm *FingerprintMatcher) CheckAndUpdate(pageID, html string) StructuralMatchResult <span class="cov8" title="1">{
+        current := ParseDOMFingerprint(html)
+        fm.mu.Lock()
+        prev, exists := fm.known[pageID]
+        fm.known[pageID] = current
+        fm.mu.Unlock()
+
+        if !exists </span><span class="cov8" title="1">{
+                return StructuralMatchResult{
+                        PageID:     pageID,
+                        Similarity: 1.0,
+                        IsNew:      true,
+                }
+        }</span>
+
+        <span class="cov8" title="1">sim := DOMFingerprintSimilarity(prev, current)
+        drifted := sim &lt; fm.threshold
+
+        if drifted &amp;&amp; fm.logger != nil </span><span class="cov8" title="1">{
+                fm.logger.Warn("DOM fingerprint drift detected",
+                        zap.String("page_id", pageID),
+                        zap.Float64("similarity", sim),
+                        zap.Float64("threshold", fm.threshold),
+                )
+        }</span>
+
+        <span class="cov8" title="1">return StructuralMatchResult{
+                PageID:     pageID,
+                Similarity: sim,
+                Drifted:    drifted,
+                IsNew:      false,
+        }</span>
+}
+
+// FindClosestMatch searches all known fingerprints for the most similar one.
+func (fm *FingerprintMatcher) FindClosestMatch(html string) ClosestMatchResult <span class="cov8" title="1">{
+        current := ParseDOMFingerprint(html)
+        best := ClosestMatchResult{}
+
+        fm.mu.RLock()
+        defer fm.mu.RUnlock()
+
+        for id, sig := range fm.known </span><span class="cov8" title="1">{
+                sim := DOMFingerprintSimilarity(current, sig)
+                if sim &gt; best.Similarity </span><span class="cov8" title="1">{
+                        best.PageID = id
+                        best.Similarity = sim
+                        best.Found = true
+                }</span>
+        }
+
+        <span class="cov8" title="1">if best.Similarity &lt; fm.threshold </span><span class="cov8" title="1">{
+                best.Found = false
+        }</span>
+
+        <span class="cov8" title="1">return best</span>
+}
+
+// KnownCount returns the number of stored fingerprints.
+func (fm *FingerprintMatcher) KnownCount() int <span class="cov8" title="1">{
+        fm.mu.RLock()
+        defer fm.mu.RUnlock()
+        return len(fm.known)
+}</span>
+
+// Threshold returns the matcher's threshold.
+func (fm *FingerprintMatcher) Threshold() float64 <span class="cov8" title="1">{
+        return fm.threshold
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package domheal
+
+import (
+        "encoding/json"
+        "os"
+)
+
+// RepairSuggestion records a selector repair event.
+type RepairSuggestion struct {
+        ElementType string  `json:"element_type"`
+        OldSelector string  `json:"old_selector"`
+        NewSelector string  `json:"new_selector"`
+        Confidence  float64 `json:"confidence"`
+        Method      string  `json:"method"`
+}
+
+// RepairLog persists repair suggestions to a JSON file.
+type RepairLog struct {
+        path string
+}
+
+// NewRepairLog creates a repair log at the given file path.
+func NewRepairLog(path string) *RepairLog <span class="cov8" title="1">{
+        return &amp;RepairLog{path: path}
+}</span>
+
+// Append adds a repair suggestion to the log file.
+func (rl *RepairLog) Append(suggestion RepairSuggestion) error <span class="cov8" title="1">{
+        var entries []RepairSuggestion
+        data, err := os.ReadFile(rl.path)
+        if err == nil </span><span class="cov8" title="1">{
+                _ = json.Unmarshal(data, &amp;entries)
+        }</span>
+        <span class="cov8" title="1">entries = append(entries, suggestion)
+        out, _ := json.MarshalIndent(entries, "", "  ")
+        return os.WriteFile(rl.path, out, 0644)</span>
+}
+
+// Read loads all repair suggestions from the log file.
+func (rl *RepairLog) Read() ([]RepairSuggestion, error) <span class="cov8" title="1">{
+        data, err := os.ReadFile(rl.path)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">var entries []RepairSuggestion
+        if err := json.Unmarshal(data, &amp;entries); err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return entries, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package domheal
+
+import (
+        "regexp"
+        "strings"
+
+        "go.uber.org/zap"
+)
+
+// HTMLNode represents a simplified DOM node for structural comparison.
+type HTMLNode struct {
+        Tag        string     `json:"tag"`
+        Classes    []string   `json:"classes,omitempty"`
+        Attributes []string   `json:"attributes,omitempty"`
+        Children   []HTMLNode `json:"children,omitempty"`
+}
+
+// StructuralSignature is a compact fingerprint of a page's DOM structure.
+type StructuralSignature struct {
+        TagCounts        map[string]int `json:"tag_counts"`
+        MaxDepth         int            `json:"max_depth"`
+        TotalNodes       int            `json:"total_nodes"`
+        ClassFingerprint string         `json:"class_fingerprint"`
+}
+
+// StructuralSimilarity computes Jaccard similarity between two tag-count maps.
+// Returns a value in [0, 1] where 1 means identical structure.
+func StructuralSimilarity(a, b StructuralSignature) float64 <span class="cov8" title="1">{
+        if a.TotalNodes == 0 &amp;&amp; b.TotalNodes == 0 </span><span class="cov8" title="1">{
+                return 1.0
+        }</span>
+
+        <span class="cov8" title="1">allTags := make(map[string]bool)
+        for tag := range a.TagCounts </span><span class="cov8" title="1">{
+                allTags[tag] = true
+        }</span>
+        <span class="cov8" title="1">for tag := range b.TagCounts </span><span class="cov8" title="1">{
+                allTags[tag] = true
+        }</span>
+
+        <span class="cov8" title="1">intersection := 0
+        union := 0
+        for tag := range allTags </span><span class="cov8" title="1">{
+                ca := a.TagCounts[tag]
+                cb := b.TagCounts[tag]
+                if ca &lt; cb </span><span class="cov8" title="1">{
+                        intersection += ca
+                        union += cb
+                }</span> else<span class="cov8" title="1"> {
+                        intersection += cb
+                        union += ca
+                }</span>
+        }
+
+        <span class="cov8" title="1">return float64(intersection) / float64(union)</span>
+}
+
+// ParseStructuralSignature builds a signature from raw HTML by extracting
+// tag names, class lists, and nesting depth via a lightweight regex scanner.
+// This avoids a full DOM parser dependency for the structural comparison use case.
+func ParseStructuralSignature(html string) StructuralSignature <span class="cov8" title="1">{
+        sig := StructuralSignature{
+                TagCounts: make(map[string]int),
+        }
+        if html == "" </span><span class="cov8" title="1">{
+                return sig
+        }</span>
+
+        <span class="cov8" title="1">tagRe := regexp.MustCompile(`&lt;\s*([a-zA-Z][a-zA-Z0-9]*)[^&gt;]*&gt;`)
+        classRe := regexp.MustCompile(`class\s*=\s*["']([^"']+)["']`)
+        closeRe := regexp.MustCompile(`&lt;/\s*([a-zA-Z][a-zA-Z0-9]*)\s*&gt;`)
+
+        depth := 0
+        classSet := make(map[string]bool)
+
+        openMatches := tagRe.FindAllStringSubmatch(html, -1)
+        closeMatches := closeRe.FindAllStringSubmatch(html, -1)
+
+        for _, m := range openMatches </span><span class="cov8" title="1">{
+                tag := strings.ToLower(m[0])
+                tagName := strings.ToLower(m[1])
+                sig.TagCounts[tagName]++
+                sig.TotalNodes++
+                depth++
+                if depth &gt; sig.MaxDepth </span><span class="cov8" title="1">{
+                        sig.MaxDepth = depth
+                }</span>
+
+                <span class="cov8" title="1">if cm := classRe.FindStringSubmatch(tag); cm != nil </span><span class="cov8" title="1">{
+                        for _, cls := range strings.Fields(cm[1]) </span><span class="cov8" title="1">{
+                                classSet[cls] = true
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">for _, m := range closeMatches </span><span class="cov8" title="1">{
+                _ = m[1]
+                depth--
+                if depth &lt; 0 </span><span class="cov8" title="1">{
+                        depth = 0
+                }</span>
+        }
+
+        <span class="cov8" title="1">classes := make([]string, 0, len(classSet))
+        for cls := range classSet </span><span class="cov8" title="1">{
+                classes = append(classes, cls)
+        }</span>
+        <span class="cov8" title="1">sig.ClassFingerprint = strings.Join(classes, ",")
+
+        return sig</span>
+}
+
+// StructuralMatcher tracks known page signatures and detects structural drift.
+type StructuralMatcher struct {
+        known     map[string]StructuralSignature
+        threshold float64
+        logger    *zap.Logger
+}
+
+// NewStructuralMatcher creates a matcher with a minimum similarity threshold.
+// Pages scoring below threshold are flagged as structurally drifted.
+func NewStructuralMatcher(threshold float64, logger *zap.Logger) *StructuralMatcher <span class="cov8" title="1">{
+        if threshold &lt;= 0 </span><span class="cov8" title="1">{
+                threshold = 0.7
+        }</span>
+        <span class="cov8" title="1">return &amp;StructuralMatcher{
+                known:     make(map[string]StructuralSignature),
+                threshold: threshold,
+                logger:    logger,
+        }</span>
+}
+
+// StructuralMatchResult reports the outcome of a structural comparison.
+type StructuralMatchResult struct {
+        PageID     string  `json:"page_id"`
+        Similarity float64 `json:"similarity"`
+        Drifted    bool    `json:"drifted"`
+        IsNew      bool    `json:"is_new"`
+}
+
+// CheckAndUpdate compares current HTML structure against the stored baseline.
+func (sm *StructuralMatcher) CheckAndUpdate(pageID, html string) StructuralMatchResult <span class="cov8" title="1">{
+        current := ParseStructuralSignature(html)
+        prev, exists := sm.known[pageID]
+        sm.known[pageID] = current
+
+        if !exists </span><span class="cov8" title="1">{
+                return StructuralMatchResult{
+                        PageID:     pageID,
+                        Similarity: 1.0,
+                        Drifted:    false,
+                        IsNew:      true,
+                }
+        }</span>
+
+        <span class="cov8" title="1">sim := StructuralSimilarity(prev, current)
+        drifted := sim &lt; sm.threshold
+
+        if drifted &amp;&amp; sm.logger != nil </span><span class="cov8" title="1">{
+                sm.logger.Warn("structural drift detected",
+                        zap.String("page_id", pageID),
+                        zap.Float64("similarity", sim),
+                        zap.Float64("threshold", sm.threshold),
+                        zap.Int("prev_nodes", prev.TotalNodes),
+                        zap.Int("curr_nodes", current.TotalNodes),
+                )
+        }</span>
+
+        <span class="cov8" title="1">return StructuralMatchResult{
+                PageID:     pageID,
+                Similarity: sim,
+                Drifted:    drifted,
+                IsNew:      false,
+        }</span>
+}
+
+// KnownSignatures returns a copy of all stored page signatures.
+func (sm *StructuralMatcher) KnownSignatures() map[string]StructuralSignature <span class="cov8" title="1">{
+        out := make(map[string]StructuralSignature, len(sm.known))
+        for k, v := range sm.known </span><span class="cov8" title="1">{
+                out[k] = v
+        }</span>
+        <span class="cov8" title="1">return out</span>
+}
+
+// ClosestMatchResult reports the best structural match from known pages.
+type ClosestMatchResult struct {
+        PageID     string  `json:"page_id"`
+        Similarity float64 `json:"similarity"`
+        Found      bool    `json:"found"`
+}
+
+// FindClosestMatch searches all known page signatures for the one most
+// structurally similar to the given HTML. Returns the best match above
+// the matcher's threshold.
+func (sm *StructuralMatcher) FindClosestMatch(html string) ClosestMatchResult <span class="cov8" title="1">{
+        current := ParseStructuralSignature(html)
+        best := ClosestMatchResult{}
+
+        for id, sig := range sm.known </span><span class="cov8" title="1">{
+                sim := StructuralSimilarity(current, sig)
+                if sim &gt; best.Similarity </span><span class="cov8" title="1">{
+                        best.PageID = id
+                        best.Similarity = sim
+                        best.Found = true
+                }</span>
+        }
+
+        <span class="cov8" title="1">if best.Similarity &lt; sm.threshold </span><span class="cov8" title="1">{
+                best.Found = false
+        }</span>
+
+        <span class="cov8" title="1">return best</span>
+}
+
+// stripHTMLTags removes HTML tags from a string, leaving only text content.
+func stripHTMLTags(s string) string <span class="cov8" title="1">{
+        tagRe := regexp.MustCompile(`&lt;[^&gt;]*&gt;`)
+        return tagRe.ReplaceAllString(s, " ")
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
