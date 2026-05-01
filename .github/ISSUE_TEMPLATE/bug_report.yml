@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible issue with the framework.
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include a minimal reproduction and remove any sensitive data from scenarios, screenshots, and logs.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Commands, scenario JSON, and environment needed to reproduce.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and artifacts
+      description: Paste relevant logs or describe the screenshot/telemetry artifact path. Remove secrets first.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release version or commit SHA.
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Affected tier
+      options:
+        - Light tier
+        - Smart tier
+        - VLM tier
+        - Browser/CDP
+        - Scenario runner
+        - Docker Compose integration
+        - Unknown

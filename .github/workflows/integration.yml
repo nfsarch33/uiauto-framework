@@ -1,0 +1,22 @@
+name: integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "12 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  docker-compose-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+      - name: Run Docker Compose integration suite
+        run: make test-integration

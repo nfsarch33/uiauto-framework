@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UIAuto Form Flow</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 3rem auto;
+        max-width: 44rem;
+        line-height: 1.5;
+      }
+
+      label,
+      input,
+      button {
+        display: block;
+        font: inherit;
+      }
+
+      input {
+        margin: 0.25rem 0 1rem;
+        padding: 0.5rem;
+        width: 18rem;
+      }
+
+      button {
+        padding: 0.6rem 1rem;
+      }
+
+      #result {
+        margin-top: 1rem;
+        min-height: 1.5rem;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>UIAuto Form Flow</h1>
+      <p>This page is intentionally small and deterministic so the visible demo can prove type, click, wait, and verify actions without external services.</p>
+
+      <form id="demo-form">
+        <label for="name">Name</label>
+        <input id="name" name="name" autocomplete="off" placeholder="Ada Lovelace" />
+        <button id="submit" type="submit">Submit greeting</button>
+      </form>
+
+      <p id="result" role="status" aria-live="polite"></p>
+    </main>
+
+    <script>
+      document.getElementById("demo-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const name = document.getElementById("name").value || "friend";
+        setTimeout(() => {
+          document.getElementById("result").textContent = `Hello, ${name}. UIAuto observed this result.`;
+        }, 250);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/probe/"
+  },
+  "response": {
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "message": "OmniParser stub ready",
+      "version": "stub-2.0.0"
+    },
+    "status": 200
+  }
+}
+

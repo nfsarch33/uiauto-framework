@@ -59,9 +59,9 @@ func TestGuardrailHardFailsOnBlankPage_NoURLFlag(t *testing.T) {
 	}
 }
 
-func TestGuardrailPassesOnBlankPage_WithURLFlag(t *testing.T) {
-	if err := guardPageOrFail("about:blank", nil, "https://example.com"); err != nil {
-		t.Fatalf("should not error when --url overrides blank page: %v", err)
+func TestGuardrailHardFailsOnBlankPage_WithURLFlag(t *testing.T) {
+	if err := guardPageOrFail("about:blank", nil, "https://example.com"); err == nil {
+		t.Fatal("expected error when browser remains about:blank after --url navigation")
 	}
 }
 
@@ -191,11 +191,16 @@ func TestLoadScenarios_FindByID(t *testing.T) {
 
 func TestDemoStepResultJSON(t *testing.T) {
 	result := DemoStepResult{
-		StepIndex:   1,
-		Instruction: "Click the accept button",
-		Status:      "PASS",
-		Tier:        "light",
-		Elements:    5,
+		StepIndex:      1,
+		Instruction:    "Click the accept button",
+		Status:         "PASS",
+		Tier:           "light",
+		Elements:       5,
+		OCRTextCount:   3,
+		OmniMode:       "ocr",
+		FallbackReason: "visual_zero_elements",
+		PageURL:        "https://example.com",
+		ScreenshotURL:  "/tmp/step.png",
 	}
 	data, err := json.Marshal(result)
 	if err != nil {
@@ -207,6 +212,9 @@ func TestDemoStepResultJSON(t *testing.T) {
 	}
 	if decoded.StepIndex != 1 || decoded.Status != "PASS" {
 		t.Errorf("round-trip mismatch: %+v", decoded)
+	}
+	if decoded.OmniMode != "ocr" || decoded.OCRTextCount != 3 || decoded.PageURL == "" {
+		t.Errorf("telemetry mismatch: %+v", decoded)
 	}
 }
 

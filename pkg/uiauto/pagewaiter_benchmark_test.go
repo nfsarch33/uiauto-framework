@@ -416,8 +416,8 @@ func TestPageWaiterBenchmark(t *testing.T) {
 	var allResults []PageWaiterBenchResult
 
 	for _, pg := range pageTypes {
-		for _, strat := range strategies {
-			waiter := NewPageWaiter(15*time.Second, strat.strategy)
+		for _, strategy := range strategies {
+			waiter := NewPageWaiter(15*time.Second, strategy.strategy)
 			url := ts.URL + pg.path
 
 			start := time.Now()
@@ -438,7 +438,7 @@ func TestPageWaiterBenchmark(t *testing.T) {
 				WaitDurationMs: float64(dur.Milliseconds()),
 				DOMCaptured:    domOK,
 				DOMLength:      domLen,
-				Strategy:       strat.name,
+				Strategy:       strategy.name,
 				Success:        waitErr == nil,
 			}
 			if waitErr != nil {
@@ -447,7 +447,7 @@ func TestPageWaiterBenchmark(t *testing.T) {
 			allResults = append(allResults, r)
 
 			t.Logf("page=%-20s strategy=%-20s duration=%-10v success=%v dom=%d",
-				pg.name, strat.name, dur.Truncate(time.Millisecond), waitErr == nil, domLen)
+				pg.name, strategy.name, dur.Truncate(time.Millisecond), waitErr == nil, domLen)
 		}
 	}
 

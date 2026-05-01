@@ -1,0 +1,36 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/parse-ocr"
+  },
+  "response": {
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "elements": [
+        {
+          "bounding_box": {
+            "height": 60,
+            "width": 320,
+            "x": 800,
+            "y": 200
+          },
+          "confidence": 0.85,
+          "id": 1,
+          "interactable": false,
+          "text": "Welcome",
+          "type": "ocr"
+        }
+      ],
+      "layout": {
+        "height": 1080,
+        "page_type": "login",
+        "regions": 1,
+        "width": 1920
+      }
+    },
+    "status": 200
+  }
+}
+

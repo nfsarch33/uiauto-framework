@@ -1,0 +1,49 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/parse"
+  },
+  "response": {
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "elements": [
+        {
+          "bounding_box": {
+            "height": 44,
+            "width": 200,
+            "x": 860,
+            "y": 470
+          },
+          "confidence": 0.97,
+          "id": 1,
+          "interactable": true,
+          "text": "Sign In",
+          "type": "button"
+        },
+        {
+          "bounding_box": {
+            "height": 40,
+            "width": 400,
+            "x": 760,
+            "y": 340
+          },
+          "confidence": 0.95,
+          "id": 2,
+          "interactable": true,
+          "text": "Username",
+          "type": "input"
+        }
+      ],
+      "layout": {
+        "height": 1080,
+        "page_type": "login",
+        "regions": 3,
+        "width": 1920
+      }
+    },
+    "status": 200
+  }
+}
+

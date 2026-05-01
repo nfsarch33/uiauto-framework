@@ -1,0 +1,49 @@
+[
+  {
+    "action_types": [
+      "verify",
+      "type",
+      "click",
+      "wait",
+      "verify"
+    ],
+    "action_values": [
+      "",
+      "Ada Lovelace",
+      "",
+      "",
+      ""
+    ],
+    "id": "form-flow-001",
+    "name": "Local form flow",
+    "natural_language": [
+      "Verify the form-flow demo heading is visible",
+      "Type Ada Lovelace into the name input",
+      "Click the submit greeting button",
+      "Wait until the greeting result is visible",
+      "Verify the greeting result remains visible"
+    ],
+    "page_objects": [
+      "form.heading",
+      "form.name_input",
+      "form.submit_button",
+      "form.result",
+      "form.result"
+    ],
+    "selectors_used": [
+      "h1",
+      "#name",
+      "#submit",
+      "#result",
+      "#result"
+    ],
+    "source": "framework",
+    "tags": [
+      "smoke",
+      "form",
+      "visible-browser",
+      "local"
+    ]
+  }
+]
+

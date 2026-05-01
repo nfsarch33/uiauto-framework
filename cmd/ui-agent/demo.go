@@ -41,17 +41,24 @@ type NLScenario struct {
 
 // DemoStepResult captures the outcome of one NL step for structured output.
 type DemoStepResult struct {
-	StepIndex    int           `json:"step_index"`
-	Instruction  string        `json:"instruction"`
-	ActionType   string        `json:"action_type,omitempty"`
-	Status       string        `json:"status"`
-	Selector     string        `json:"selector,omitempty"`
-	Tier         string        `json:"tier"`
-	HealPath     string        `json:"heal_path,omitempty"`
-	Elements     int           `json:"elements_detected"`
-	Latency      time.Duration `json:"latency_ns"`
-	ScreenshotAt string        `json:"screenshot_path,omitempty"`
-	Error        string        `json:"error,omitempty"`
+	StepIndex      int           `json:"step_index"`
+	Instruction    string        `json:"instruction"`
+	ActionType     string        `json:"action_type,omitempty"`
+	Status         string        `json:"status"`
+	Selector       string        `json:"selector,omitempty"`
+	Tier           string        `json:"tier"`
+	HealPath       string        `json:"heal_path,omitempty"`
+	Elements       int           `json:"elements_detected"`
+	OCRTextCount   int           `json:"ocr_text_count,omitempty"`
+	OmniMode       string        `json:"omni_mode,omitempty"`
+	FallbackReason string        `json:"fallback_reason,omitempty"`
+	PageURL        string        `json:"page_url,omitempty"`
+	ScreenshotURL  string        `json:"screenshot_url,omitempty"`
+	VisualScore    *float64      `json:"visual_score,omitempty"`
+	Latency        time.Duration `json:"latency_ns"`
+	ScreenshotAt   string        `json:"screenshot_path,omitempty"`
+	RawScreenshot  string        `json:"raw_screenshot_path,omitempty"`
+	Error          string        `json:"error,omitempty"`
 }
 
 // DemoMetricsSummary aggregates per-step metrics into a single payload that
@@ -123,15 +130,7 @@ five seconds after each step (great for live demos).
 When --omniparser-url is provided, OmniParser availability is treated as a
 hard prerequisite -- the demo aborts if the server is unreachable.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			llmURL := ollamaURL
-			llmModel := smartModel
-			if gatewayURL != "" {
-				llmURL = gatewayURL
-				llmModel = gatewayModel
-			} else if envURL := os.Getenv("OPENAI_BASE_URL"); envURL != "" {
-				llmURL = envURL
-				llmModel = gatewayModel
-			}
+			llmURL, llmModel := resolveLLMTarget(ollamaURL, smartModel, gatewayURL, gatewayModel, os.Getenv("OPENAI_BASE_URL"))
 			return runDemo(demoConfig{
 				URL:            url,
 				ScenarioFile:   scenarioFile,
@@ -197,6 +196,59 @@ type demoConfig struct {
 	MetricsJSON    bool
 	VLMModel       string
 	HardFailOmni   bool
+
+	// agentFactory lets tests inject a fake demoAgent. When nil the real
+	// MemberAgent path is used.
+	agentFactory func(cfg demoConfig) (demoAgent, error)
+}
+
+// demoAgent is the small subset of *uiauto.MemberAgent that runDemo uses.
+// Defining it as an interface lets tests substitute a fake without launching
+// real Chrome.
+type demoAgent interface {
+	CurrentTier() uiauto.ModelTier
+	RunTask(ctx context.Context, taskID string, actions []uiauto.Action) uiauto.TaskResult
+	Close()
+	// browserURL is consulted during the readiness guard. Returns "" + error
+	// when no browser is attached.
+	browserURL() (string, error)
+	// captureScreenshot returns nil when the agent has no browser bound.
+	captureScreenshot() ([]byte, error)
+	// navigate is the equivalent of agent.Navigate when present.
+	navigate(url string) error
+}
+
+// realDemoAgent wraps *uiauto.MemberAgent to satisfy demoAgent.
+type realDemoAgent struct{ inner *uiauto.MemberAgent }
+
+func (a *realDemoAgent) CurrentTier() uiauto.ModelTier { return a.inner.CurrentTier() }
+func (a *realDemoAgent) RunTask(ctx context.Context, taskID string, actions []uiauto.Action) uiauto.TaskResult {
+	return a.inner.RunTask(ctx, taskID, actions)
+}
+func (a *realDemoAgent) Close() { a.inner.Close() }
+func (a *realDemoAgent) browserURL() (string, error) {
+	b := a.inner.Browser()
+	if b == nil {
+		return "", fmt.Errorf("browser not attached")
+	}
+	return b.CurrentURL()
+}
+func (a *realDemoAgent) captureScreenshot() ([]byte, error) {
+	b := a.inner.Browser()
+	if b == nil {
+		return nil, nil
+	}
+	return b.CaptureScreenshot()
+}
+func (a *realDemoAgent) navigate(url string) error { return a.inner.Navigate(url) }
+
+// defaultAgentFactory builds a real MemberAgent when no test factory is set.
+func defaultAgentFactory(cfg demoConfig) (demoAgent, error) {
+	a, err := buildMemberAgent(cfg.Headless, cfg.RemoteDebugURL, cfg.PatternFile, cfg.OllamaURL, cfg.SmartModel)
+	if err != nil {
+		return nil, err
+	}
+	return &realDemoAgent{inner: a}, nil
 }
 
 func runDemo(cfg demoConfig) error {
@@ -251,7 +303,11 @@ func runDemo(cfg demoConfig) error {
 		}
 	}
 
-	agent, err := buildMemberAgent(cfg.Headless, cfg.RemoteDebugURL, cfg.PatternFile, cfg.OllamaURL, cfg.SmartModel)
+	factory := cfg.agentFactory
+	if factory == nil {
+		factory = defaultAgentFactory
+	}
+	agent, err := factory(cfg)
 	if err != nil {
 		return fmt.Errorf("init agent: %w", err)
 	}
@@ -259,20 +315,19 @@ func runDemo(cfg demoConfig) error {
 
 	if cfg.URL != "" {
 		fmt.Printf("[nav] Navigating to %s\n", cfg.URL)
-		if navErr := agent.Navigate(cfg.URL); navErr != nil {
+		if navErr := agent.navigate(cfg.URL); navErr != nil {
 			return fmt.Errorf("navigate: %w", navErr)
 		}
 		time.Sleep(2 * time.Second)
 	}
 
-	if browser := agent.Browser(); browser != nil {
-		currentURL, urlErr := browser.CurrentURL()
-		if err := guardPageOrFail(currentURL, urlErr, cfg.URL); err != nil {
-			return fmt.Errorf("page readiness check failed: %w", err)
-		}
-		if urlErr == nil {
-			fmt.Printf("[page] Current URL: %s\n", currentURL)
-		}
+	currentURL, urlErr := agent.browserURL()
+	if err := guardPageOrFail(currentURL, urlErr, cfg.URL); err != nil {
+		return fmt.Errorf("page readiness check failed: %w", err)
+	}
+	currentURL, _ = agent.browserURL()
+	if urlErr == nil && currentURL != "" {
+		fmt.Printf("[page] Current URL: %s\n", currentURL)
 	}
 
 	var (
@@ -301,27 +356,34 @@ func runDemo(cfg demoConfig) error {
 			Instruction: instruction,
 			ActionType:  actionType,
 			Tier:        agent.CurrentTier().String(),
+			PageURL:     currentURL,
 		}
 
 		var screenshot []byte
-		browser := agent.Browser()
-		if browser != nil {
-			ss, ssErr := browser.CaptureScreenshot()
-			if ssErr == nil {
-				screenshot = ss
-			}
+		if ss, ssErr := agent.captureScreenshot(); ssErr == nil {
+			screenshot = ss
 		}
 
 		if screenshot != nil {
 			rawPath := filepath.Join(screenshotsDir, fmt.Sprintf("step-%02d-raw.png", stepNum))
 			_ = os.WriteFile(rawPath, screenshot, 0o644)
+			result.RawScreenshot = rawPath
 		}
 
 		if omniClient != nil && screenshot != nil {
 			parseResult, parseErr := omniClient.Parse(context.Background(), screenshot)
 			if parseErr == nil {
 				result.Elements = len(parseResult.Elements)
+				result.OCRTextCount = parseResult.OCRTextCount
+				result.OmniMode = parseResult.Mode
+				result.FallbackReason = parseResult.FallbackReason
 				fmt.Printf("  OmniParser: %d elements detected\n", result.Elements)
+				if result.OmniMode != "" {
+					fmt.Printf("  OmniParser mode: %s\n", result.OmniMode)
+				}
+				if result.FallbackReason != "" {
+					fmt.Printf("  OmniParser fallback: %s\n", result.FallbackReason)
+				}
 
 				ssPath := filepath.Join(screenshotsDir, fmt.Sprintf("step-%02d-annotated.png", stepNum))
 				saved := false
@@ -342,6 +404,7 @@ func runDemo(cfg demoConfig) error {
 					}
 				}
 				result.ScreenshotAt = ssPath
+				result.ScreenshotURL = ssPath
 				fmt.Printf("  Screenshot: %s\n", ssPath)
 
 				if cfg.Visual && ssPath != "" {
@@ -435,50 +498,22 @@ func runDemo(cfg demoConfig) error {
 
 	finishedAt := time.Now().UTC().Format(time.RFC3339)
 	fmt.Printf("\n=== Demo Complete ===\n")
-	passed := 0
-	var totalLatency time.Duration
-	for _, r := range results {
-		if r.Status == "PASS" {
-			passed++
-		}
-		totalLatency += r.Latency
-	}
+	passed, totalLatency := tallyResults(results)
 	fmt.Printf("Results: %d/%d passed\n", passed, len(results))
 
 	resultsPath := filepath.Join(resultsDir, "demo-results.json")
-	if data, jErr := json.MarshalIndent(results, "", "  "); jErr == nil {
-		_ = os.WriteFile(resultsPath, data, 0o644)
+	if err := writeJSON(resultsPath, results); err == nil {
 		fmt.Printf("Results saved: %s\n", resultsPath)
 	}
 
 	if cfg.MetricsJSON {
-		var avgMs int64
-		if len(results) > 0 {
-			avgMs = totalLatency.Milliseconds() / int64(len(results))
-		}
-		summary := DemoMetricsSummary{
-			ScenarioID:      scenario.ID,
-			ScenarioName:    scenario.Name,
-			TotalSteps:      len(results),
-			PassedSteps:     passed,
-			FailedSteps:     len(results) - passed,
-			TotalLatencyMs:  totalLatency.Milliseconds(),
-			AvgLatencyMs:    avgMs,
-			TierBreakdown:   tierCounts,
-			HealPathSummary: healPathCount,
-			Steps:           results,
-			StartedAt:       startedAt,
-			FinishedAt:      finishedAt,
-			Source:          scenario.Source,
-		}
+		summary := buildDemoSummary(scenario, results, tierCounts, healPathCount, startedAt, finishedAt, passed, totalLatency)
 		metricsPath := filepath.Join(resultsDir, "demo-metrics.json")
-		if data, jErr := json.MarshalIndent(summary, "", "  "); jErr == nil {
-			_ = os.WriteFile(metricsPath, data, 0o644)
+		if err := writeJSON(metricsPath, summary); err == nil {
 			fmt.Printf("Metrics saved: %s\n", metricsPath)
 		}
 		tracePath := filepath.Join(resultsDir, "evolution-trace.json")
-		if data, jErr := json.MarshalIndent(traceEntries, "", "  "); jErr == nil {
-			_ = os.WriteFile(tracePath, data, 0o644)
+		if err := writeJSON(tracePath, traceEntries); err == nil {
 			fmt.Printf("Evolution trace saved: %s\n", tracePath)
 		}
 	}
@@ -486,6 +521,68 @@ func runDemo(cfg demoConfig) error {
 	fmt.Printf("Run directory: %s\n", runDir)
 
 	return nil
+}
+
+// resolveLLMTarget chooses the (URL, model) tuple for the demo's LLM client.
+// Priority: --gateway-url > $OPENAI_BASE_URL > --ollama-url. The selected URL
+// dictates which model name is used (gateway models when a gateway is in
+// play, otherwise the local smart model).
+func resolveLLMTarget(ollamaURL, smartModel, gatewayURL, gatewayModel, envBaseURL string) (string, string) {
+	if gatewayURL != "" {
+		return gatewayURL, gatewayModel
+	}
+	if envBaseURL != "" {
+		return envBaseURL, gatewayModel
+	}
+	return ollamaURL, smartModel
+}
+
+// tallyResults counts passes and sums latencies across step results.
+func tallyResults(results []DemoStepResult) (int, time.Duration) {
+	passed := 0
+	var total time.Duration
+	for _, r := range results {
+		if r.Status == "PASS" {
+			passed++
+		}
+		total += r.Latency
+	}
+	return passed, total
+}
+
+// buildDemoSummary aggregates per-step results into a DemoMetricsSummary.
+// Pure function so it can be unit-tested without launching a browser.
+func buildDemoSummary(scenario NLScenario, results []DemoStepResult, tierCounts, healPathCount map[string]int, startedAt, finishedAt string, passed int, totalLatency time.Duration) DemoMetricsSummary {
+	var avgMs int64
+	if len(results) > 0 {
+		avgMs = totalLatency.Milliseconds() / int64(len(results))
+	}
+	return DemoMetricsSummary{
+		ScenarioID:      scenario.ID,
+		ScenarioName:    scenario.Name,
+		TotalSteps:      len(results),
+		PassedSteps:     passed,
+		FailedSteps:     len(results) - passed,
+		TotalLatencyMs:  totalLatency.Milliseconds(),
+		AvgLatencyMs:    avgMs,
+		TierBreakdown:   tierCounts,
+		HealPathSummary: healPathCount,
+		Steps:           results,
+		StartedAt:       startedAt,
+		FinishedAt:      finishedAt,
+		Source:          scenario.Source,
+	}
+}
+
+// writeJSON marshals v with indentation and writes it to path. Errors are
+// surfaced so callers can decide whether to log + continue (the demo) or
+// fail (a test).
+func writeJSON(path string, v interface{}) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // actionTypeForStep returns the action type for the i-th step, defaulting to
@@ -576,9 +673,6 @@ func guardPageOrFail(currentURL string, urlErr error, urlFlag string) error {
 		return fmt.Errorf("browser unreachable (%w) -- ensure Chrome has at least one tab open or use --url", urlErr)
 	}
 	if readyErr := checkPageReadiness(currentURL); readyErr != nil {
-		if urlFlag != "" {
-			return nil
-		}
 		return readyErr
 	}
 	return nil

@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a new capability or improvement.
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the desired behavior and any alternatives considered.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Browser/CDP
+        - Scenario format
+        - Plugin seam
+        - Self-healing
+        - Visual verification
+        - Observability
+        - CI/release
+        - Documentation
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility impact
+      description: Would this change scenario JSON, public Go APIs, or CLI flags?

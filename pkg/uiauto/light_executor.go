@@ -313,8 +313,26 @@ func (e *LightExecutor) performAction(ctx context.Context, action Action, select
 		}
 		return nil
 	case "wait":
-		waiter := NewPageWaiter(e.defaultTimeout, WaitElementVisible)
-		return waiter.WaitForElement(ctx, selector)
+		waitSelector := selector
+		if action.Value != "" {
+			waitSelector = action.Value
+		}
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			visible, err := e.browser.IsVisible(waitSelector)
+			if err == nil && visible {
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				if err != nil {
+					return fmt.Errorf("wait for %s: %w", waitSelector, err)
+				}
+				return fmt.Errorf("wait for %s: %w", waitSelector, ctx.Err())
+			case <-ticker.C:
+			}
+		}
 	case "verify":
 		visible, err := e.browser.IsVisible(selector)
 		if err != nil {

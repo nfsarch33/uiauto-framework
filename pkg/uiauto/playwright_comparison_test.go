@@ -1124,8 +1124,8 @@ func TestPlaywrightComparison_WaitStrategySweep(t *testing.T) {
 	var allResults []sweepResult
 
 	for _, pg := range sweepPages {
-		for _, strat := range navStrategies {
-			waiter := NewPageWaiter(10*time.Second, strat.strategy)
+		for _, strategy := range navStrategies {
+			waiter := NewPageWaiter(10*time.Second, strategy.strategy)
 
 			start := time.Now()
 			navErr := waiter.NavigateAndWait(browser.ctx, ts.URL+"/"+pg.name)
@@ -1139,12 +1139,12 @@ func TestPlaywrightComparison_WaitStrategySweep(t *testing.T) {
 			}
 
 			allResults = append(allResults, sweepResult{
-				Page: pg.name, Strategy: strat.name,
+				Page: pg.name, Strategy: strategy.name,
 				WaitMs: float64(dur.Milliseconds()), WaitOK: navErr == nil, Found: found,
 			})
 
 			t.Logf("page=%-30s strategy=%-15s wait=%6.0fms ok=%v found=%v",
-				pg.name, strat.name, float64(dur.Milliseconds()), navErr == nil, found)
+				pg.name, strategy.name, float64(dur.Milliseconds()), navErr == nil, found)
 		}
 
 		// WaitElementVisible: navigate first, then wait for target element

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -55,6 +56,131 @@ func defaultA2ACard(baseURL string) A2ACard {
 		},
 		InputModes:  []string{"text", "json"},
 		OutputModes: []string{"json"},
+	}
+}
+
+// serverAgent is the subset of *uiauto.MemberAgent required by the HTTP
+// handlers. Defining it as an interface lets tests inject a fake without
+// launching a real browser.
+type serverAgent interface {
+	IsDegraded() bool
+	IsConverged() bool
+	CurrentTier() uiauto.ModelTier
+	Navigate(url string) error
+	DetectDriftAndHeal(ctx context.Context) []uiauto.HealResult
+	Metrics() uiauto.AggregatedMetrics
+	TaskCount() int
+	RunTask(ctx context.Context, taskID string, actions []uiauto.Action) uiauto.TaskResult
+}
+
+// buildServeMux wires up the HTTP handlers used by `ui-agent serve`. It is
+// extracted so unit tests can drive the endpoints with httptest + a fake
+// serverAgent without binding a port or starting a browser.
+func buildServeMux(card A2ACard, agent serverAgent, headless bool, patternFile string) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/.well-known/a2a-card", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(card)
+	})
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "ok",
+			"version":   version,
+			"time":      time.Now().UTC().Format(time.RFC3339),
+			"degraded":  agent.IsDegraded(),
+			"converged": agent.IsConverged(),
+			"tier":      agent.CurrentTier().String(),
+		})
+	})
+
+	mux.HandleFunc("/api/v1/heal", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			PageURL     string `json:"page_url"`
+			Selector    string `json:"selector"`
+			ElementType string `json:"element_type"`
+			Description string `json:"description"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if req.PageURL != "" {
+			if navErr := agent.Navigate(req.PageURL); navErr != nil {
+				slog.Error("heal: navigation failed", "url", req.PageURL, "error", navErr)
+			}
+		}
+
+		results := agent.DetectDriftAndHeal(r.Context())
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":       "completed",
+			"heal_results": results,
+			"count":        len(results),
+		})
+	})
+
+	mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
+		metrics := agent.Metrics()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"agent":        "ui-agent",
+			"version":      version,
+			"headless":     headless,
+			"pattern_file": patternFile,
+			"capabilities": card.Capabilities,
+			"tier":         agent.CurrentTier().String(),
+			"converged":    agent.IsConverged(),
+			"degraded":     agent.IsDegraded(),
+			"task_count":   agent.TaskCount(),
+			"metrics":      metrics,
+		})
+	})
+
+	mux.HandleFunc("/api/v1/run-task", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			TaskID  string          `json:"task_id"`
+			Actions []uiauto.Action `json:"actions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		result := agent.RunTask(r.Context(), req.TaskID, req.Actions)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
+	})
+
+	return mux
+}
+
+// printHealResults formats the heal results for the `ui-agent heal` CLI.
+// Extracted from healCmd.RunE so tests can verify the output without launching
+// a browser.
+func printHealResults(out io.Writer, results []uiauto.HealResult) {
+	fmt.Fprintf(out, "Self-healing results: %d repairs attempted\n", len(results))
+	for i, r := range results {
+		status := "FAILED"
+		if r.Success {
+			status = "OK"
+		}
+		fmt.Fprintf(out, "  [%d] %s target=%s method=%s\n", i, status, r.TargetID, r.Method)
 	}
 }
 
@@ -139,95 +265,7 @@ func serveCmd() *cobra.Command {
 			baseURL := fmt.Sprintf("http://localhost:%d", port)
 			card := defaultA2ACard(baseURL)
 
-			mux := http.NewServeMux()
-
-			mux.HandleFunc("/.well-known/a2a-card", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(card)
-			})
-
-			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"status":    "ok",
-					"version":   version,
-					"time":      time.Now().UTC().Format(time.RFC3339),
-					"degraded":  agent.IsDegraded(),
-					"converged": agent.IsConverged(),
-					"tier":      agent.CurrentTier().String(),
-				})
-			})
-
-			mux.HandleFunc("/api/v1/heal", func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost {
-					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-					return
-				}
-
-				var req struct {
-					PageURL     string `json:"page_url"`
-					Selector    string `json:"selector"`
-					ElementType string `json:"element_type"`
-					Description string `json:"description"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-					return
-				}
-
-				if req.PageURL != "" {
-					if navErr := agent.Navigate(req.PageURL); navErr != nil {
-						slog.Error("heal: navigation failed", "url", req.PageURL, "error", navErr)
-					}
-				}
-
-				results := agent.DetectDriftAndHeal(r.Context())
-
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"status":       "completed",
-					"heal_results": results,
-					"count":        len(results),
-				})
-			})
-
-			mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
-				metrics := agent.Metrics()
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"agent":        "ui-agent",
-					"version":      version,
-					"headless":     headless,
-					"pattern_file": patternFile,
-					"capabilities": card.Capabilities,
-					"tier":         agent.CurrentTier().String(),
-					"converged":    agent.IsConverged(),
-					"degraded":     agent.IsDegraded(),
-					"task_count":   agent.TaskCount(),
-					"metrics":      metrics,
-				})
-			})
-
-			mux.HandleFunc("/api/v1/run-task", func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost {
-					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-					return
-				}
-
-				var req struct {
-					TaskID  string          `json:"task_id"`
-					Actions []uiauto.Action `json:"actions"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-					return
-				}
-
-				result := agent.RunTask(r.Context(), req.TaskID, req.Actions)
-
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(result)
-			})
+			mux := buildServeMux(card, agent, headless, patternFile)
 
 			go func() {
 				metricsMux := http.NewServeMux()
@@ -314,15 +352,7 @@ func healCmd() *cobra.Command {
 			)
 
 			results := agent.DetectDriftAndHeal(context.Background())
-
-			fmt.Printf("Self-healing results: %d repairs attempted\n", len(results))
-			for i, r := range results {
-				status := "FAILED"
-				if r.Success {
-					status = "OK"
-				}
-				fmt.Printf("  [%d] %s target=%s method=%s\n", i, status, r.TargetID, r.Method)
-			}
+			printHealResults(os.Stdout, results)
 
 			return nil
 		},

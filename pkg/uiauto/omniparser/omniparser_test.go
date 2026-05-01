@@ -68,6 +68,9 @@ func TestClientParse(t *testing.T) {
 	if result.Latency <= 0 {
 		t.Error("latency should be positive")
 	}
+	if result.Mode != "visual" {
+		t.Errorf("mode = %q, want visual", result.Mode)
+	}
 }
 
 func TestClientParseEmptyImage(t *testing.T) {
@@ -161,4 +164,144 @@ func TestHealthCheck_FallbackProbe(t *testing.T) {
 	if err != nil {
 		t.Errorf("HealthCheck should succeed via /probe/ fallback, got: %v", err)
 	}
+}
+
+// Server returns zero elements from /parse, then OmniParser falls back to
+// /parse-ocr which returns a non-empty list. Exercises the parseOCR branch.
+func TestParse_FallsBackToOCR(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/parse", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(ParseResult{Elements: []UIElement{}})
+	})
+	mux.HandleFunc("/parse-ocr", func(w http.ResponseWriter, r *http.Request) {
+		var req ParseRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad", 400)
+			return
+		}
+		json.NewEncoder(w).Encode(ParseResult{
+			Elements: []UIElement{{ID: 1, Type: "ocr", Text: "fallback"}},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	got, err := c.Parse(context.Background(), []byte("img"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Elements) != 1 || got.Elements[0].Type != "ocr" {
+		t.Errorf("expected OCR fallback element, got %+v", got)
+	}
+	if got.Mode != "ocr" {
+		t.Errorf("mode = %q, want ocr", got.Mode)
+	}
+	if got.FallbackReason != "visual_zero_elements" {
+		t.Errorf("fallback reason = %q", got.FallbackReason)
+	}
+	if got.OCRTextCount != 1 {
+		t.Errorf("ocr text count = %d, want 1", got.OCRTextCount)
+	}
+}
+
+// Both /parse and /parse-ocr return zero elements -- the original empty
+// result must still be returned without error.
+func TestParse_OCRAlsoEmptyReturnsOriginal(t *testing.T) {
+	mux := http.NewServeMux()
+	emptyHandler := func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(ParseResult{Elements: []UIElement{}})
+	}
+	mux.HandleFunc("/parse", emptyHandler)
+	mux.HandleFunc("/parse-ocr", emptyHandler)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	got, err := c.Parse(context.Background(), []byte("img"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Elements) != 0 {
+		t.Errorf("expected zero elements when both endpoints return empty, got %d", len(got.Elements))
+	}
+	if got.FallbackReason != "visual_zero_elements; ocr_zero_elements" {
+		t.Errorf("fallback reason = %q", got.FallbackReason)
+	}
+}
+
+// /parse returns malformed JSON -- decode error path.
+func TestParse_DecodeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL)
+	if _, err := c.Parse(context.Background(), []byte("img")); err == nil {
+		t.Error("expected decode error")
+	}
+}
+
+// HealthCheck must surface non-404 server errors immediately rather than
+// silently falling back to /probe/.
+func TestHealthCheck_ServerErrorPropagates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL)
+	if err := c.HealthCheck(context.Background()); err == nil {
+		t.Error("expected error for 500")
+	}
+}
+
+// HealthCheck stops once it receives a non-404 error from /health.
+func TestHealthCheck_OnlyHealthOK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL)
+	if err := c.HealthCheck(context.Background()); err != nil {
+		t.Errorf("expected ok, got %v", err)
+	}
+}
+
+// Both endpoints return 404 -- final error must say none found.
+func TestHealthCheck_BothMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL)
+	err := c.HealthCheck(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !contains(err.Error(), "no health endpoint") {
+		t.Errorf("expected helpful message, got %v", err)
+	}
+}
+
+// Network failure (closed server) must propagate as an error from Parse.
+func TestParse_NetworkError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv.Close()
+	c := NewClient(srv.URL)
+	if _, err := c.Parse(context.Background(), []byte("x")); err == nil {
+		t.Error("expected error from closed server")
+	}
+}
+
+func contains(haystack, needle string) bool {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
 }

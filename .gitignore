@@ -11,3 +11,6 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Local build artifacts produced by `make build` at the repo root.
+/ui-agent

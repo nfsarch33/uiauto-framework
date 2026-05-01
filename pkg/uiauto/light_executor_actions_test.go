@@ -15,6 +15,7 @@ type verifyMockBrowser struct {
 	verifyResult        bool
 	verifyErr           error
 	verifyCalls         int32
+	verifyResults       []bool
 	switchCalls         int32
 	switchSelectorSeen  string
 	switchReleaseCalled int32
@@ -32,7 +33,10 @@ func (m *verifyMockBrowser) Click(sel string) error {
 func (m *verifyMockBrowser) Type(sel, text string) error                 { return nil }
 func (m *verifyMockBrowser) Evaluate(expr string, res interface{}) error { return nil }
 func (m *verifyMockBrowser) IsVisible(selector string) (bool, error) {
-	atomic.AddInt32(&m.verifyCalls, 1)
+	call := atomic.AddInt32(&m.verifyCalls, 1)
+	if len(m.verifyResults) >= int(call) {
+		return m.verifyResults[call-1], m.verifyErr
+	}
 	return m.verifyResult, m.verifyErr
 }
 func (m *verifyMockBrowser) SwitchToFrame(selector string) (func(), error) {
@@ -135,5 +139,32 @@ func TestExecute_VerifyAction_RespectsContextDeadline(t *testing.T) {
 	// should be PASS. This guards against context plumbing regressions.
 	if err != nil {
 		t.Fatalf("expected pass with mock under tight deadline: %v", err)
+	}
+}
+
+// --- TDD: wait action ---
+
+func TestExecute_WaitAction_PollsUntilVisible(t *testing.T) {
+	tracker := seedTracker(t, "result", "#result")
+	mb := &verifyMockBrowser{verifyResults: []bool{false, false, true}}
+	exec := NewLightExecutor(tracker, mb, WithTimeout(2*time.Second))
+
+	err := exec.Execute(context.Background(), Action{Type: "wait", TargetID: "result"})
+	if err != nil {
+		t.Fatalf("wait should pass once element becomes visible: %v", err)
+	}
+	if atomic.LoadInt32(&mb.verifyCalls) < 3 {
+		t.Errorf("expected polling IsVisible calls, got %d", atomic.LoadInt32(&mb.verifyCalls))
+	}
+}
+
+func TestExecute_WaitAction_UsesActionValueSelector(t *testing.T) {
+	tracker := seedTracker(t, "placeholder", "#ignored")
+	mb := &verifyMockBrowser{verifyResult: true}
+	exec := NewLightExecutor(tracker, mb, WithTimeout(2*time.Second))
+
+	err := exec.Execute(context.Background(), Action{Type: "wait", TargetID: "placeholder", Value: "#actual"})
+	if err != nil {
+		t.Fatalf("wait should pass with action value selector: %v", err)
 	}
 }

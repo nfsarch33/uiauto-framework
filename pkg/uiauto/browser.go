@@ -183,19 +183,45 @@ func (b *BrowserAgent) CaptureScreenshot() ([]byte, error) {
 func (b *BrowserAgent) Click(selector string) error {
 	ctx, cancel := context.WithTimeout(b.ctx, 15*time.Second)
 	defer cancel()
-	return chromedp.Run(ctx,
+	if err := chromedp.Run(ctx,
 		chromedp.WaitReady(selector, chromedp.ByQuery),
 		chromedp.Click(selector, chromedp.ByQuery),
-	)
+	); err == nil {
+		return nil
+	}
+	return chromedp.Run(ctx, chromedp.Evaluate(fmt.Sprintf(`(() => {
+		const el = document.querySelector(%q);
+		if (!el) throw new Error("selector not found: %s");
+		el.scrollIntoView({block: "center", inline: "center"});
+		el.click();
+		return true;
+	})()`, selector, selector), nil))
 }
 
 // Type waits for an element to be ready, clears it, and types text.
 func (b *BrowserAgent) Type(selector, text string) error {
 	ctx, cancel := context.WithTimeout(b.ctx, 5*time.Second)
 	defer cancel()
-	return chromedp.Run(ctx,
+	if err := chromedp.Run(ctx,
 		chromedp.SetValue(selector, text, chromedp.ByQuery),
-	)
+	); err == nil {
+		return nil
+	}
+	return chromedp.Run(ctx, chromedp.Evaluate(fmt.Sprintf(`(() => {
+		const el = document.querySelector(%q);
+		if (!el) throw new Error("selector not found: %s");
+		el.focus();
+		const proto = Object.getPrototypeOf(el);
+		const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
+		if (descriptor && descriptor.set) {
+			descriptor.set.call(el, %q);
+		} else {
+			el.value = %q;
+		}
+		el.dispatchEvent(new Event("input", {bubbles: true}));
+		el.dispatchEvent(new Event("change", {bubbles: true}));
+		return true;
+	})()`, selector, selector, text, text), nil))
 }
 
 // Evaluate runs a JavaScript expression and stores the result.

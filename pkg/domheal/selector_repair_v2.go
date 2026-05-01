@@ -145,10 +145,10 @@ func (sr *SelectorRepairV2) Repair(ctx context.Context, elementType, brokenSelec
 		{StrategyTextContent, func() []string { return sr.generateTextContentCandidates(elementType) }},
 	}
 
-	for _, strat := range strategies {
+	for _, strategy := range strategies {
 		result.StrategiesTried++
-		candidates := strat.generate()
-		sr.recordAttempt(strat.name)
+		candidates := strategy.generate()
+		sr.recordAttempt(strategy.name)
 
 		for _, candidate := range candidates {
 			count, err := evaluator(ctx, candidate)
@@ -158,8 +158,8 @@ func (sr *SelectorRepairV2) Repair(ctx context.Context, elementType, brokenSelec
 			if count > 0 {
 				rc := RepairCandidate{
 					Selector:   candidate,
-					Strategy:   strat.name,
-					Confidence: strategyConfidence(strat.name, count),
+					Strategy:   strategy.name,
+					Confidence: strategyConfidence(strategy.name, count),
 					MatchCount: count,
 				}
 				result.Candidates = append(result.Candidates, rc)

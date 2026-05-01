@@ -1,0 +1,86 @@
+# Docker Compose stack for integration tests.
+#
+# Brings up the external services that the framework's `*_integration_test.go`
+# files depend on (Postgres for PostgresPatternStore, headless Chrome over CDP,
+# and a stub OmniParser HTTP server). Use via:
+#
+#   make test-integration
+#
+# or, manually:
+#
+#   docker compose -f docker-compose.integration.yml up -d
+#   POSTGRES_URL=postgres://uiauto:uiauto@127.0.0.1:5440/uiauto_test?sslmode=disable \
+#   REMOTE_DEBUG_URL=http://127.0.0.1:9333 \
+#   OMNIPARSER_URL=http://127.0.0.1:7861 \
+#   go test -count=1 -timeout 15m ./...
+#
+# Run `docker compose -f docker-compose.integration.yml down -v` to clean up.
+
+services:
+  # Headless Chromium with the DevTools protocol exposed on port 9222.
+  # `chromedp/headless-shell` is the maintained image used by chromedp's own
+  # CI; unlike alpine-chrome it correctly honours --remote-debugging-address
+  # so the port can be forwarded out of the container. ~120MB multi-arch.
+  chrome:
+    image: chromedp/headless-shell:stable
+    container_name: uiauto-chrome
+    # The image's entrypoint run.sh already starts chromium on 0.0.0.0:9223
+    # and uses socat to forward 9222 -> 9223. Only append extra flags that
+    # don't collide with --remote-debugging-port/address.
+    command:
+      - --no-sandbox
+      - --disable-gpu
+      # Newer Chromium rejects DevTools WS handshakes from origins other
+      # than localhost unless this flag is set; required when port-forwarding
+      # the remote-debug port out of the container.
+      - --remote-allow-origins=*
+    ports:
+      # Mapped to 9333 on the host because 9222 is the conventional debug
+      # port for a developer's locally-running Chrome instance and would
+      # collide on most workstations.
+      - "127.0.0.1:9333:9222"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:9222/json/version >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  # Postgres for the PostgresPatternStore integration suite.
+  postgres:
+    image: postgres:16-alpine
+    container_name: uiauto-postgres
+    environment:
+      POSTGRES_USER: uiauto
+      POSTGRES_PASSWORD: uiauto
+      POSTGRES_DB: uiauto_test
+    ports:
+      - "127.0.0.1:5440:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uiauto -d uiauto_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  # Lightweight stub of the OmniParser HTTP API. Returns a fixed response
+  # shape so the framework's integration tests can exercise the
+  # /probe/, /parse, and /parse-ocr happy paths without GPU dependencies.
+  # Replace this stub with the real OmniParser V2 service when running the
+  # full visual-verification suite.
+  omniparser-stub:
+    image: wiremock/wiremock:3.9.1
+    container_name: uiauto-omniparser-stub
+    ports:
+      - "127.0.0.1:7861:8080"
+    volumes:
+      - ./test/fixtures/omniparser-stub:/home/wiremock:ro
+    command: ["--port", "8080", "--global-response-templating"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/__admin/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s

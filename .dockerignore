@@ -1,0 +1,15 @@
+.git
+.github
+bin
+dist
+coverage.out
+*.cover
+*.coverprofile
+*.test
+.env
+.env.*
+.DS_Store
+.idea
+.vscode
+tmp
+node_modules

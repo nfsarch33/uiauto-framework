@@ -43,6 +43,41 @@ func TestBrowserAgent(t *testing.T) {
 	}
 }
 
+func TestBrowserAgent_ClickAndTypeFallbacks(t *testing.T) {
+	skipWithoutBrowser(t)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>
+			<input id="name" />
+			<button id="submit" onclick="document.querySelector('#result').textContent = document.querySelector('#name').value">Submit</button>
+			<p id="result"></p>
+		</body></html>`))
+	}))
+	defer ts.Close()
+
+	agent, err := NewBrowserAgent(true)
+	if err != nil {
+		t.Skipf("Skipping test, could not start browser: %v", err)
+	}
+	defer agent.Close()
+
+	if err := agent.Navigate(ts.URL); err != nil {
+		t.Fatalf("navigate: %v", err)
+	}
+	if err := agent.Type("#name", "Ada Lovelace"); err != nil {
+		t.Fatalf("type: %v", err)
+	}
+	if err := agent.Click("#submit"); err != nil {
+		t.Fatalf("click: %v", err)
+	}
+	var got string
+	if err := agent.Evaluate(`document.querySelector("#result").textContent`, &got); err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	if got != "Ada Lovelace" {
+		t.Fatalf("result text = %q", got)
+	}
+}
+
 func TestNewBrowserAgentWithRemote_UnreachableURL(t *testing.T) {
 	_, err := NewBrowserAgentWithRemote("http://127.0.0.1:19999")
 	if err == nil {

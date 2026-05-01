@@ -14,10 +14,13 @@ import (
 
 // ParseResult is the OmniParser V2 response.
 type ParseResult struct {
-	Elements    []UIElement   `json:"elements"`
-	Layout      LayoutInfo    `json:"layout"`
-	SOMImageB64 string        `json:"som_image_base64,omitempty"`
-	Latency     time.Duration `json:"-"`
+	Elements       []UIElement   `json:"elements"`
+	Layout         LayoutInfo    `json:"layout"`
+	SOMImageB64    string        `json:"som_image_base64,omitempty"`
+	Mode           string        `json:"mode,omitempty"`
+	OCRTextCount   int           `json:"ocr_text_count,omitempty"`
+	FallbackReason string        `json:"fallback_reason,omitempty"`
+	Latency        time.Duration `json:"-"`
 }
 
 // UIElement represents a parsed UI component.
@@ -25,6 +28,7 @@ type UIElement struct {
 	ID           int         `json:"id"`
 	Type         string      `json:"type"`
 	Text         string      `json:"text"`
+	Content      string      `json:"content,omitempty"`
 	BoundingBox  BoundingBox `json:"bounding_box"`
 	Confidence   float64     `json:"confidence"`
 	Interactable bool        `json:"interactable"`
@@ -110,6 +114,7 @@ func (c *Client) Parse(ctx context.Context, screenshot []byte) (*ParseResult, er
 	}
 
 	result.Latency = time.Since(start)
+	result.Mode = "visual"
 	c.logger.Info("omniparser parse",
 		slog.Int("elements", len(result.Elements)),
 		slog.Duration("latency", result.Latency),
@@ -119,7 +124,13 @@ func (c *Client) Parse(ctx context.Context, screenshot []byte) (*ParseResult, er
 		c.logger.Info("omniparser: zero elements from /parse, trying /parse-ocr fallback")
 		if ocrResult, ocrErr := c.parseOCR(ctx, screenshot); ocrErr == nil && len(ocrResult.Elements) > 0 {
 			ocrResult.Latency = time.Since(start)
+			ocrResult.Mode = "ocr"
+			ocrResult.FallbackReason = "visual_zero_elements"
 			return ocrResult, nil
+		} else if ocrErr != nil {
+			result.FallbackReason = "visual_zero_elements; ocr_failed"
+		} else {
+			result.FallbackReason = "visual_zero_elements; ocr_zero_elements"
 		}
 	}
 
@@ -153,11 +164,24 @@ func (c *Client) parseOCR(ctx context.Context, screenshot []byte) (*ParseResult,
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("omniparser-ocr: decode: %w", err)
 	}
+	result.Mode = "ocr"
+	result.OCRTextCount = countTextElements(result.Elements)
 
 	c.logger.Info("omniparser-ocr fallback",
 		slog.Int("elements", len(result.Elements)),
+		slog.Int("ocr_text_count", result.OCRTextCount),
 	)
 	return &result, nil
+}
+
+func countTextElements(elements []UIElement) int {
+	count := 0
+	for _, element := range elements {
+		if element.Text != "" || element.Content != "" {
+			count++
+		}
+	}
+	return count
 }
 
 // HealthCheck verifies service availability.

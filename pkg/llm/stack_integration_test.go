@@ -290,6 +290,7 @@ func TestStackIntegration_LatencyBenchmark(t *testing.T) {
 		resp, err := router.Complete(ctx, req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
+		require.Equal(t, "fast", resp.Choices[0].Message.Content)
 		latencies = append(latencies, time.Since(start))
 	}
 
@@ -297,9 +298,11 @@ func TestStackIntegration_LatencyBenchmark(t *testing.T) {
 	p50 := latencies[49]
 	p95 := latencies[94]
 
-	// With 1ms tier succeeding, p50 and p95 should be close to 1ms (allow 2x for variance)
-	assert.Less(t, p50.Milliseconds(), int64(5), "p50 latency should be under 5ms")
-	assert.Less(t, p95.Milliseconds(), int64(15), "p95 latency should be under 15ms")
+	// With the 1ms tier succeeding, every response must come from the fast tier.
+	// Keep the timing assertion loose enough for CI scheduler variance; this
+	// test is a regression guard, not a microbenchmark.
+	assert.Less(t, p50.Milliseconds(), int64(10), "p50 latency should stay near the fast tier")
+	assert.Less(t, p95.Milliseconds(), int64(50), "p95 latency should tolerate CI scheduler variance")
 }
 
 func TestStackIntegration_ConcurrentRequests(t *testing.T) {
