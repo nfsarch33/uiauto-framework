@@ -23,7 +23,7 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: go
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.24.x"
           cache: true
