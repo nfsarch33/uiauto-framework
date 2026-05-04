@@ -14,6 +14,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0
 	go.uber.org/goleak v1.3.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -90,5 +91,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240827150818-7e3bb234dfed // indirect
 	google.golang.org/grpc v1.67.1 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -105,12 +105,68 @@ Releases.
 
 Full reference: [docs/scenario-format.md](docs/scenario-format.md).
 
+## LLM provider routing
+
+The `pkg/llm` package supports multiple provider backends and routing strategies:
+
+**Providers** (all implement `llm.Provider`):
+- `Client` -- OpenAI-compatible APIs (GPT-4o, Qwen, any `/v1/chat/completions` endpoint)
+- `OllamaClient` -- Ollama native API with `think` parameter support
+- `BedrockClient` -- Anthropic Bedrock Messages API via gateway proxy
+- `ClaudeCLIClient` -- Claude Code CLI headless mode
+
+**Routers:**
+- `TieredRouter` -- ordered failover with per-provider health tracking and cooldown
+- `SemanticRouter` -- task-type-aware routing (discovery, pattern replay, visual, synthesis, evaluation)
+- `MQRouter` -- MQ-style fair-share scheduler with per-user FIFO queues, weighted upstream selection, and background health checks
+
+### MQ Router configuration (YAML)
+
+```yaml
+max_queue_depth: 10
+max_concurrency: 2
+request_timeout: "5m"
+nodes:
+  - name: local-vllm
+    url: http://127.0.0.1:8001
+    tier: agent
+    weight: 4
+    models: ["qwen3.5-27b"]
+  - name: openai-gpt4
+    url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    tier: powerful
+    weight: 3
+    models: ["gpt-4o"]
+  - name: bedrock-claude
+    url: http://localhost:8767/bedrock
+    api_key_env: BEDROCK_API_KEY
+    tier: powerful
+    weight: 2
+    models: ["anthropic.claude-sonnet-4-20250514-v1:0"]
+health_check:
+  interval: 15s
+  timeout: 5s
+  path: /health
+  unhealthy_threshold: 3
+  healthy_threshold: 1
+```
+
+```go
+cfg, _ := llm.LoadMQConfig("llm-config.yaml")
+router, _ := llm.NewMQRouter(*cfg, slog.Default())
+defer router.Close()
+
+ctx := llm.WithUserID(ctx, "user-123")
+resp, err := router.Complete(ctx, llm.CompletionRequest{...})
+```
+
 ## Repository layout
 
 ```
 pkg/
   uiauto/      # core framework: agents, tiers, healer, browser, plugin seams
-  llm/         # LLM client adapters (OpenAI, Bedrock, Claude CLI)
+  llm/         # LLM providers, routers (tiered, semantic, MQ fair-share)
   evolver/     # capability mutation + auto-promotion
   domheal/     # DOM-level drift detection helpers
 cmd/
@@ -131,7 +187,8 @@ docs/
   `--remote-debugging-port=9222`.
 - Optional: an [OmniParser V2](https://github.com/microsoft/OmniParser) server
   for visual annotations and verifications.
-- Optional: an OpenAI-compatible LLM endpoint for the Smart tier.
+- Optional: any OpenAI-compatible LLM endpoint for the Smart tier; use
+  `MQRouter` for multi-node routing with fair-share scheduling.
 
 ## Quality gates
 
@@ -149,6 +206,8 @@ integration coverage.
 ## Roadmap
 
 - Stabilize the public Go API before `v1.0.0`.
+- SSE streaming passthrough for the MQ router (first-token latency parity).
+- Prometheus metrics endpoint for MQ router queue depth and upstream health.
 - Expand visual verification adapters beyond the default OmniParser client.
 - Add more browser-backend adapters behind the existing `Browser` interface.
 - Publish curated example suites for forms, dashboards, iframes, and visual
