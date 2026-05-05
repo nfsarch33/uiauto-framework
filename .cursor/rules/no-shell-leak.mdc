@@ -62,13 +62,16 @@ names defined in `$HOME/.config/runx/config.yaml`:
 - Logs: `runx logs show|tail|rotate <log-name>`.
 - Doctor: `runx doctor` for stack health.
 
-## Repo aliases (29 registered as of v299)
+## Repo aliases (33 registered as of v299)
 
 business, global-kb, ironclaw, openclaw, runx, ironclaw-mcp, ironclaw-ops,
 mission-control, pdf-mcp, linkedin-mcp, upwork-mcp, hermes, gstack, router,
 autoresearch, openclaw-rl, agentic-research, skills, academic-skills,
 secure-auth, windows-mcp, chromedp, auto-research-sleep, memo,
-**cursor-tools, fleet-bench, offload-telemetry, cylrl, ansible-win**.
+cursor-tools, fleet-bench, offload-telemetry, cylrl, ansible-win,
+**uiauto-framework, uiauto-zendesk-scenarios, screen-unblocker, resume**.
+
+Drift gate: `runx config check-aliases v299` must return `ok: 33/33 v299 aliases present` (added in `runx` PR #5).
 
 All paths in the config use `$HOME/...` (resolved at load via
 `os.ExpandEnv` then `ExpandTilde`) for cross-machine portability.
