@@ -35,3 +35,4 @@ jobs:
         with:
           go-version-input: "1.26.x"
           go-package: ./...
+          repo-checkout: false
