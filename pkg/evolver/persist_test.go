@@ -1,3 +1,8 @@
+// runx-public-repo-gate: allow-file fleet_host_alias
+// Test fixtures use real fleet host names (wsl1, etc.) to verify
+// evolver persistence layer round-trips against the canonical agent
+// inventory. Sanitising would invalidate the test contract.
+
 package evolver
 
 import (

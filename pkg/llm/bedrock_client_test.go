@@ -1,3 +1,9 @@
+// runx-public-repo-gate: allow-file personal_path_id
+// Test fixtures contain the ZD AI gateway hostname literally because
+// the bedrock client is wired against that endpoint per
+// sop/zd-ai-gateway-tier-a.md. Tests assert the URL routing produces
+// exactly that string. Sanitising would invalidate the test contract.
+
 package llm
 
 import (

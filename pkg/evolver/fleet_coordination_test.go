@@ -1,3 +1,8 @@
+// runx-public-repo-gate: allow-file fleet_host_alias
+// Test fixtures use real fleet host names (macbook-pro, etc.) to verify
+// fleet-coordination logic against the canonical agent inventory.
+// Sanitising would invalidate the test contract.
+
 package evolver
 
 import (
