@@ -6,17 +6,6 @@
 
 package llm
 
-// runx-public-repo-gate: allow-file personal_path_id
-//
-// This file intentionally references the `ai-gateway.zende.sk` host as
-// part of the IsBedrockEndpoint regression test. The literal anchors a
-// security guardrail (the router/uiauto LLM client refuse to route to
-// corporate AI gateways) and cannot be parameterised without weakening
-// the test. Sunset: after the 2026-05-28 ZD AI-gateway contract
-// cleanup the literal will be removed from production code and this
-// directive can be reverted. See `backlog/v321-public-repo-cleanup.md`
-// (story v321-3) for context.
-
 import (
 	"context"
 	"encoding/json"
