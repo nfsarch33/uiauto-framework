@@ -1,0 +1,67 @@
+# uiauto-framework
+
+> Go-based, generic, self-healing UI automation framework with multi-tier
+> model routing, OmniParser visual grounding, and natural-language scenarios.
+> Scenarios are written in plain English; a SelfHealer orchestrates Light,
+> Smart (LLM), and VLM tiers automatically.
+
+## Overview
+
+- Name: uiauto-framework
+- Purpose: Self-healing UI automation framework with three execution tiers (Light: cached patterns, Smart: LLM-powered discovery, VLM: visual grounding via OmniParser); includes plugin seams for custom actions, scenario loaders, auth providers, and visual verifiers.
+- Language(s): Go
+- License: Apache-2.0
+- Authoritative README: <https://github.com/nfsarch33/uiauto-framework#readme>
+- Source of truth branch: `main`
+
+## Quick Start
+
+- Build:
+  ```
+  make build
+  ```
+- Run smoke test:
+  ```
+  make smoke
+  ```
+- Install from source:
+  ```
+  go install github.com/nfsarch33/uiauto-framework/cmd/ui-agent@latest
+  ```
+- Minimum runtime prerequisites: Go 1.24+, Chrome/Chromium
+
+## Key Concepts
+
+- Architecture: `docs/architecture.md`
+- Three execution tiers:
+  - Light: fingerprint-cached selector replay (instant)
+  - Smart: LLM-powered discovery loop for selector re-resolution
+  - VLM: visual scoring via OmniParser-annotated screenshots
+- SelfHealer: orchestrates tier escalation (fingerprint -> structural -> LLM -> VLM)
+- Plugin seams (`pkg/uiauto/plugin/`): ActionRegistry, ScenarioLoader, AuthProvider, VisualVerifier
+- LLM routing: TieredRouter (failover), SemanticRouter (task-aware), MQRouter (fair-share)
+- Scenario format: JSON with natural-language steps and `action_types` (click, type, verify, wait, frame, evaluate, read)
+- Scenario format docs: `docs/scenario-format.md`
+- Plugin guide: `docs/plugin-guide.md`
+- Observability: `docs/observability.md`
+
+## Runnable Examples
+
+- Public smoke: `make smoke` (runs `examples/example-com-smoke/scenario.json`)
+- Form demo: `make form-smoke` (types into form, waits for result)
+- Quality gates: `make lint && make test && make test-integration && make ossready`
+
+## Related Repos
+
+- [ironclaw-mcp](https://github.com/nfsarch33/ironclaw-mcp) — MCP server for autonomous AI runtime
+- [llm-cluster-router](https://github.com/nfsarch33/llm-cluster-router) — LLM routing proxy
+
+## Operational Notes
+
+- Issue tracker: <https://github.com/nfsarch33/uiauto-framework/issues>
+- Project status: early-access reference implementation; APIs may change before v1.0.0
+
+---
+
+*This file follows the emerging `llms.txt` convention adopted by cloudwego/eino,
+Anthropic tooling, and others.*
