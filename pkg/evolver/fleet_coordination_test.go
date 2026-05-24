@@ -1,7 +1,4 @@
-// runx-public-repo-gate: allow-file fleet_host_alias
-// Test fixtures use real fleet host names (macbook-pro, etc.) to verify
-// fleet-coordination logic against the canonical agent inventory.
-// Sanitising would invalidate the test contract.
+// Test fixtures use synthetic node names for fleet coordination tests.
 
 package evolver
 
@@ -16,14 +13,14 @@ import (
 func TestFleetCoordinator_RegisterAndSharePatterns(t *testing.T) {
 	fc := NewFleetCoordinator()
 
-	fc.RegisterNode(FleetNode{ID: "macbook", Hostname: "macbook-pro", Platform: "darwin"})
-	fc.RegisterNode(FleetNode{ID: "wsl", Hostname: "wsl-ubuntu", Platform: "linux"})
+	fc.RegisterNode(FleetNode{ID: "test-darwin", Hostname: "test-darwin-host", Platform: "darwin"})
+	fc.RegisterNode(FleetNode{ID: "test-linux", Hostname: "test-linux-host", Platform: "linux"})
 
 	nodes := fc.Nodes()
 	assert.Len(t, nodes, 2)
 
 	err := fc.SharePattern(context.Background(), PatternShare{
-		SourceNode: "macbook", TargetNode: "wsl",
+		SourceNode: "test-darwin", TargetNode: "test-linux",
 		PatternID: "d2l-content-nav", PatternData: `{"selector": "a.d2l-link"}`,
 	})
 	require.NoError(t, err)
@@ -35,11 +32,11 @@ func TestFleetCoordinator_RegisterAndSharePatterns(t *testing.T) {
 
 func TestFleetCoordinator_DelegateTask(t *testing.T) {
 	fc := NewFleetCoordinator()
-	fc.RegisterNode(FleetNode{ID: "macbook", Hostname: "macbook-pro", Platform: "darwin"})
-	fc.RegisterNode(FleetNode{ID: "wsl", Hostname: "wsl-ubuntu", Platform: "linux"})
+	fc.RegisterNode(FleetNode{ID: "test-darwin", Hostname: "test-darwin-host", Platform: "darwin"})
+	fc.RegisterNode(FleetNode{ID: "test-linux", Hostname: "test-linux-host", Platform: "linux"})
 
 	err := fc.DelegateTask(context.Background(), TaskDelegation{
-		ID: "task-1", SourceNode: "macbook", TargetNode: "wsl", TaskType: "scrape",
+		ID: "task-1", SourceNode: "test-darwin", TargetNode: "test-linux", TaskType: "scrape",
 	})
 	require.NoError(t, err)
 
@@ -50,10 +47,10 @@ func TestFleetCoordinator_DelegateTask(t *testing.T) {
 
 func TestFleetCoordinator_ShareToUnregisteredNode(t *testing.T) {
 	fc := NewFleetCoordinator()
-	fc.RegisterNode(FleetNode{ID: "macbook", Hostname: "macbook-pro", Platform: "darwin"})
+	fc.RegisterNode(FleetNode{ID: "test-darwin", Hostname: "test-darwin-host", Platform: "darwin"})
 
 	err := fc.SharePattern(context.Background(), PatternShare{
-		SourceNode: "macbook", TargetNode: "unknown",
+		SourceNode: "test-darwin", TargetNode: "unknown",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not registered")

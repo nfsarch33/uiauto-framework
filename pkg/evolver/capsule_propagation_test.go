@@ -1,7 +1,4 @@
-// runx-public-repo-gate: allow-file fleet_host_alias
-// Test fixtures use real fleet host names (wsl1, wsl2, etc.) to verify
-// evolver capsule propagation against the canonical agent inventory.
-// Sanitising would invalidate the test contract.
+// Test fixtures use synthetic node names for capsule propagation tests.
 
 package evolver
 
@@ -28,15 +25,15 @@ func TestCapsulePropagation(t *testing.T) {
 
 	fleet, err := NewPersistentFleetCoordinator(store, nil)
 	require.NoError(t, err)
-	require.NoError(t, fleet.RegisterNode(ctx, FleetNode{ID: "macbook1"}))
-	require.NoError(t, fleet.RegisterNode(ctx, FleetNode{ID: "wsl1"}))
-	require.NoError(t, fleet.RegisterNode(ctx, FleetNode{ID: "wsl2"}))
+	require.NoError(t, fleet.RegisterNode(ctx, FleetNode{ID: "test-node-1"}))
+	require.NoError(t, fleet.RegisterNode(ctx, FleetNode{ID: "test-node-2"}))
+	require.NoError(t, fleet.RegisterNode(ctx, FleetNode{ID: "test-node-3"}))
 
 	cp := NewCapsulePropagator(store, fleet, nil)
 
 	result, err := cp.Propagate(ctx, PropagationConfig{
-		SourceNode:  "macbook1",
-		TargetNodes: []string{"wsl1", "wsl2"},
+		SourceNode:  "test-node-1",
+		TargetNodes: []string{"test-node-2", "test-node-3"},
 		MaxCapsules: 10,
 	})
 	require.NoError(t, err)

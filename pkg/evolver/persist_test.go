@@ -1,7 +1,4 @@
-// runx-public-repo-gate: allow-file fleet_host_alias
-// Test fixtures use real fleet host names (wsl1, etc.) to verify
-// evolver persistence layer round-trips against the canonical agent
-// inventory. Sanitising would invalidate the test contract.
+// Test fixtures use synthetic node names for persistence layer tests.
 
 package evolver
 
@@ -63,13 +60,13 @@ func TestFileStore_FleetNodePersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	node := &FleetNode{ID: "wsl1", Hostname: "wsl1.local", Platform: "linux"}
+	node := &FleetNode{ID: "test-node-1", Hostname: "test-node-1.local", Platform: "linux"}
 	require.NoError(t, store.SaveFleetNode(ctx, node))
 
 	nodes, err := store.ListFleetNodes(ctx)
 	require.NoError(t, err)
 	assert.Len(t, nodes, 1)
-	assert.Equal(t, "wsl1", nodes[0].ID)
+	assert.Equal(t, "test-node-1", nodes[0].ID)
 }
 
 func TestFileStore_PatternSharePersistence(t *testing.T) {
@@ -78,7 +75,7 @@ func TestFileStore_PatternSharePersistence(t *testing.T) {
 
 	ctx := context.Background()
 	share := &PatternShare{
-		SourceNode: "wsl1", TargetNode: "macbook1",
+		SourceNode: "test-node-1", TargetNode: "test-node-2",
 		PatternID: "p-001", Timestamp: time.Now(),
 	}
 	require.NoError(t, store.SavePatternShare(ctx, share))
@@ -93,7 +90,7 @@ func TestFileStore_TaskDelegationPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	d := &TaskDelegation{ID: "del-001", SourceNode: "wsl1", TaskType: "benchmark"}
+	d := &TaskDelegation{ID: "del-001", SourceNode: "test-node-1", TaskType: "benchmark"}
 	require.NoError(t, store.SaveTaskDelegation(ctx, d))
 
 	delegations, err := store.ListTaskDelegations(ctx)
@@ -138,18 +135,18 @@ func TestPersistentFleetCoordinator(t *testing.T) {
 	pfc, err := NewPersistentFleetCoordinator(store, nil)
 	require.NoError(t, err)
 
-	require.NoError(t, pfc.RegisterNode(ctx, FleetNode{ID: "wsl1", Hostname: "wsl1"}))
-	require.NoError(t, pfc.RegisterNode(ctx, FleetNode{ID: "macbook1", Hostname: "macbook1"}))
+	require.NoError(t, pfc.RegisterNode(ctx, FleetNode{ID: "test-node-1", Hostname: "test-node-1"}))
+	require.NoError(t, pfc.RegisterNode(ctx, FleetNode{ID: "test-node-2", Hostname: "test-node-2"}))
 
 	assert.Len(t, pfc.Nodes(), 2)
 
 	require.NoError(t, pfc.SharePattern(ctx, PatternShare{
-		SourceNode: "wsl1", TargetNode: "macbook1", PatternID: "p-001",
+		SourceNode: "test-node-1", TargetNode: "test-node-2", PatternID: "p-001",
 	}))
 	assert.Len(t, pfc.Shares(), 1)
 
 	require.NoError(t, pfc.DelegateTask(ctx, TaskDelegation{
-		ID: "del-001", SourceNode: "wsl1", TaskType: "eval",
+		ID: "del-001", SourceNode: "test-node-1", TaskType: "eval",
 	}))
 	assert.Len(t, pfc.Delegations(), 1)
 
