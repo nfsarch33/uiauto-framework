@@ -24,6 +24,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 - Raised short-mode unit coverage above the 80 percent readiness target.
 
+### Fixed
+
+- Fixed `pkg/domheal` circuit breaker cooldown measurement to use monotonic
+  elapsed time instead of truncated Unix seconds, which let the breaker
+  half-open early at wall-second boundaries and stall past its cooldown when
+  NTP stepped the wall clock. Its unit test now injects a deterministic clock
+  instead of sleeping, removing an intermittent full-suite failure.
+
 ### Security
 
 - Added a forbidden target-specific string lint guard so the framework remains
