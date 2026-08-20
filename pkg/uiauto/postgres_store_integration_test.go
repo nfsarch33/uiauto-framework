@@ -40,7 +40,12 @@ func setupPostgresContainer(t *testing.T) (pool *pgxpool.Pool, cleanup func()) {
 				WithStartupTimeout(60*time.Second),
 		),
 	)
-	require.NoError(t, err, "failed to start postgres container")
+	if err != nil {
+		// testcontainers needs a reachable container-runtime socket; on
+		// hosts without one (rootless podman with no docker.sock, bare CI)
+		// these integration tests must skip, not fail the suite.
+		t.Skipf("no container runtime for testcontainers: %v", err)
+	}
 
 	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)

@@ -9,6 +9,7 @@ import (
 )
 
 func TestBrowserAgent(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<!DOCTYPE html><html><head><title>Test</title></head><body><h1 id='title'>Hello World</h1><input type='text' id='input'><button id='btn'>Click</button></body></html>`))
@@ -44,6 +45,7 @@ func TestBrowserAgent(t *testing.T) {
 }
 
 func TestBrowserAgent_ClickAndTypeFallbacks(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>
@@ -79,6 +81,7 @@ func TestBrowserAgent_ClickAndTypeFallbacks(t *testing.T) {
 }
 
 func TestNewBrowserAgentWithRemote_UnreachableURL(t *testing.T) {
+	requireChrome(t)
 	_, err := NewBrowserAgentWithRemote("http://127.0.0.1:19999")
 	if err == nil {
 		t.Fatal("expected error for unreachable debug URL")
@@ -86,6 +89,7 @@ func TestNewBrowserAgentWithRemote_UnreachableURL(t *testing.T) {
 }
 
 func TestEnsureCDPTab_CreatesTab(t *testing.T) {
+	requireChrome(t)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -111,6 +115,7 @@ func TestEnsureCDPTab_CreatesTab(t *testing.T) {
 }
 
 func TestEnsureCDPTab_SkipsWhenTabExists(t *testing.T) {
+	requireChrome(t)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -126,6 +131,7 @@ func TestEnsureCDPTab_SkipsWhenTabExists(t *testing.T) {
 }
 
 func TestEnsureCDPTab_ErrorOnUnreachable(t *testing.T) {
+	requireChrome(t)
 	err := ensureCDPTab("http://127.0.0.1:19999")
 	if err == nil {
 		t.Fatal("expected error for unreachable CDP")

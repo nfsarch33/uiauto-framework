@@ -10,6 +10,7 @@ import (
 )
 
 func TestPageWaiter_WaitForElement(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -54,6 +55,7 @@ func TestPageWaiter_WaitForElement(t *testing.T) {
 }
 
 func TestPageWaiter_WaitForElementEnabled(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -97,6 +99,7 @@ func TestPageWaiter_WaitForElementEnabled(t *testing.T) {
 }
 
 func TestPageWaiter_WaitForDOMStable(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -145,6 +148,7 @@ func TestPageWaiter_WaitForDOMStable(t *testing.T) {
 }
 
 func TestPageWaiter_WaitForNetworkIdle(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/data" {
@@ -241,6 +245,7 @@ func TestDefaultWaitConfig(t *testing.T) {
 }
 
 func TestPageWaiter_NavigateAndWait(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/data" {
@@ -281,6 +286,7 @@ func TestPageWaiter_NavigateAndWait(t *testing.T) {
 }
 
 func TestPageWaiter_WaitForSPARouteChange(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")

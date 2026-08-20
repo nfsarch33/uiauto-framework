@@ -58,6 +58,7 @@ func setupBridgeWithBrowser(t *testing.T, handler http.HandlerFunc) (*IronClawBr
 }
 
 func TestIronClawBridge_Execute_Navigate(t *testing.T) {
+	requireChrome(t)
 	bridge, ts := setupBridgeWithBrowser(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><button id="test">Click</button></body></html>`))
 	})
@@ -78,6 +79,7 @@ func TestIronClawBridge_Execute_Navigate(t *testing.T) {
 }
 
 func TestIronClawBridge_Execute_Interact(t *testing.T) {
+	requireChrome(t)
 	bridge, ts := setupBridgeWithBrowser(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><form id="login"><input id="user"/><button id="submit">Login</button></form></body></html>`))
 	})
@@ -101,6 +103,7 @@ func TestIronClawBridge_Execute_Interact(t *testing.T) {
 }
 
 func TestIronClawBridge_Execute_Discover(t *testing.T) {
+	requireChrome(t)
 	bridge, ts := setupBridgeWithBrowser(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><button id="magic">Do Magic</button></body></html>`))
 	})
@@ -124,6 +127,7 @@ func TestIronClawBridge_Execute_Discover(t *testing.T) {
 }
 
 func TestIronClawBridge_Execute_Regression(t *testing.T) {
+	requireChrome(t)
 	bridge, ts := setupBridgeWithBrowser(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body>ok</body></html>`))
 	})
@@ -144,6 +148,7 @@ func TestIronClawBridge_Execute_Regression(t *testing.T) {
 }
 
 func TestIronClawBridge_Execute_HealthCheck(t *testing.T) {
+	requireChrome(t)
 	agent := newNoBrowserAgentForBridge(t)
 	bridge := NewIronClawBridge(agent, DefaultBridgeConfig())
 
@@ -161,6 +166,7 @@ func TestIronClawBridge_Execute_HealthCheck(t *testing.T) {
 }
 
 func TestIronClawBridge_ConcurrencyLimit(t *testing.T) {
+	requireChrome(t)
 	agent := newNoBrowserAgentForBridge(t)
 	cfg := DefaultBridgeConfig()
 	cfg.MaxConcurrent = 1
@@ -191,6 +197,7 @@ func TestIronClawBridge_ConcurrencyLimit(t *testing.T) {
 }
 
 func TestIronClawBridge_TimeoutHandling(t *testing.T) {
+	requireChrome(t)
 	agent := newNoBrowserAgentForBridge(t)
 	bridge := NewIronClawBridge(agent, DefaultBridgeConfig())
 
@@ -209,6 +216,7 @@ func TestIronClawBridge_TimeoutHandling(t *testing.T) {
 }
 
 func TestIronClawBridge_Stats(t *testing.T) {
+	requireChrome(t)
 	agent := newNoBrowserAgentForBridge(t)
 	bridge := NewIronClawBridge(agent, DefaultBridgeConfig())
 
@@ -225,6 +233,7 @@ func TestIronClawBridge_Stats(t *testing.T) {
 }
 
 func TestIronClawBridge_History(t *testing.T) {
+	requireChrome(t)
 	agent := newNoBrowserAgentForBridge(t)
 	bridge := NewIronClawBridge(agent, DefaultBridgeConfig())
 
@@ -239,6 +248,7 @@ func TestIronClawBridge_History(t *testing.T) {
 }
 
 func TestIronClawBridge_Navigate_EmptyURL(t *testing.T) {
+	requireChrome(t)
 	agent := newNoBrowserAgentForBridge(t)
 	bridge := NewIronClawBridge(agent, DefaultBridgeConfig())
 
@@ -254,6 +264,7 @@ func TestIronClawBridge_Navigate_EmptyURL(t *testing.T) {
 }
 
 func TestIronClawBridge_UnknownTaskType(t *testing.T) {
+	requireChrome(t)
 	agent := newNoBrowserAgentForBridge(t)
 	bridge := NewIronClawBridge(agent, DefaultBridgeConfig())
 
@@ -268,6 +279,7 @@ func TestIronClawBridge_UnknownTaskType(t *testing.T) {
 }
 
 func TestIronClawBridge_ConcurrentHealthChecks(t *testing.T) {
+	requireChrome(t)
 	agent := newNoBrowserAgentForBridge(t)
 	cfg := DefaultBridgeConfig()
 	cfg.MaxConcurrent = 16
