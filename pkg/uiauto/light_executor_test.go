@@ -12,6 +12,7 @@ import (
 )
 
 func TestLightExecutor(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `<html><body><button id="btn">Click</button></body></html>`)
@@ -76,6 +77,7 @@ func TestLightExecutor(t *testing.T) {
 }
 
 func TestLightExecutor_BatchExecution(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `<html><body>
@@ -137,6 +139,7 @@ func TestLightExecutor_BatchExecution(t *testing.T) {
 }
 
 func TestLightExecutor_DiscoverParallel(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `<html><body>
@@ -186,6 +189,7 @@ func TestLightExecutor_DiscoverParallel(t *testing.T) {
 }
 
 func TestLightExecutor_Metrics(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `<html><body><div id="m">metrics</div></body></html>`)

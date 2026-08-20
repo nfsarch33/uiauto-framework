@@ -14,6 +14,7 @@ import (
 )
 
 func TestModelRouter_SmartDiscovery(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><button id="new-btn">Click Me</button></body></html>`))
@@ -64,6 +65,7 @@ func TestModelRouter_SmartDiscovery(t *testing.T) {
 }
 
 func TestModelRouter_Convergence(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><div id="d">text</div></body></html>`))
@@ -179,6 +181,7 @@ func TestModelRouter_TierString(t *testing.T) {
 }
 
 func TestModelRouter_BatchExecution(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><div id="x">x</div><div id="y">y</div></body></html>`))

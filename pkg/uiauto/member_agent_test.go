@@ -75,6 +75,7 @@ func TestMemberAgent_NewFromComponents(t *testing.T) {
 }
 
 func TestMemberAgent_NavigateAndRegister(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><form id="login"><input id="user" type="text"/><button id="submit">Login</button></form></body></html>`))
@@ -122,6 +123,7 @@ func TestMemberAgent_NavigateAndRegister(t *testing.T) {
 }
 
 func TestMemberAgent_RunTask_Success(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><form id="login"><input id="user" type="text"/><button id="submit">Login</button></form></body></html>`))
@@ -172,6 +174,7 @@ func TestMemberAgent_RunTask_Success(t *testing.T) {
 }
 
 func TestMemberAgent_RunTask_FailAndHeal(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><form id="login"><button id="new-submit" class="primary">Login</button></form></body></html>`))
@@ -261,6 +264,7 @@ func TestMemberAgent_Metrics(t *testing.T) {
 }
 
 func TestMemberAgent_DiscoverAndRegister(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><button id="magic">Do Magic</button></body></html>`))
@@ -347,6 +351,7 @@ func TestMemberAgent_WithVLMMetrics(t *testing.T) {
 }
 
 func TestMemberAgent_Lifecycle(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><div>Page 1</div></body></html>`))
@@ -459,6 +464,7 @@ func TestNewMemberAgent_Config(t *testing.T) {
 var _ llm.Provider = (*MockProvider)(nil)
 
 func TestMemberAgent_RunTask_MultipleActions(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body>

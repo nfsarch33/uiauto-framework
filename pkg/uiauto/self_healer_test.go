@@ -10,6 +10,7 @@ import (
 )
 
 func TestSelfHealer_Heal_SmartLLM(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><button id="submit">Submit</button></body></html>`))

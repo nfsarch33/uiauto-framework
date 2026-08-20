@@ -15,6 +15,7 @@ import (
 )
 
 func TestVisualVerifier_DOMMatch(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -52,6 +53,7 @@ func TestVisualVerifier_DOMMatch(t *testing.T) {
 }
 
 func TestVisualVerifier_DOMFail_VLMFallback(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -94,6 +96,7 @@ func TestVisualVerifier_DOMFail_VLMFallback(t *testing.T) {
 }
 
 func TestVisualVerifier_NoVLM(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -128,6 +131,7 @@ func TestVisualVerifier_NoVLM(t *testing.T) {
 }
 
 func TestVisualVerifier_VerifyWithJudge(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -173,6 +177,7 @@ func TestVisualVerifier_VerifyWithJudge(t *testing.T) {
 }
 
 func TestVisualVerifier_VerifyWithJudge_NoVLM(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -210,6 +215,7 @@ func TestVisualVerifier_VerifyWithJudge_NoVLM(t *testing.T) {
 }
 
 func TestVisualVerifier_VerifyWithJudge_NotPresent(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -249,6 +255,7 @@ func TestVisualVerifier_VerifyWithJudge_NotPresent(t *testing.T) {
 }
 
 func TestVisualVerifier_DetectAllElements(t *testing.T) {
+	requireChrome(t)
 	skipWithoutBrowser(t)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
