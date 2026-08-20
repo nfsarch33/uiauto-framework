@@ -6,24 +6,35 @@ import (
 )
 
 // CircuitBreaker tracks consecutive failures and opens when threshold is reached.
-// After cooldown seconds, it transitions to half-open and allows a single probe.
+// After the cooldown has elapsed, it transitions to half-open and allows a single probe.
 type CircuitBreaker struct {
 	mu            sync.Mutex
 	failures      int
 	threshold     int
-	cooldownSec   int
+	cooldown      time.Duration
 	state         string // "closed", "open", "half-open"
-	lastFailureAt int64
+	lastFailureAt time.Time
+	now           func() time.Time // clock source; nil means time.Now (injectable in tests)
 }
 
 // NewCircuitBreaker creates a circuit breaker with threshold consecutive failures
 // and cooldown seconds before half-open.
 func NewCircuitBreaker(threshold, cooldownSec int) *CircuitBreaker {
 	return &CircuitBreaker{
-		threshold:   threshold,
-		cooldownSec: cooldownSec,
-		state:       "closed",
+		threshold: threshold,
+		cooldown:  time.Duration(cooldownSec) * time.Second,
+		state:     "closed",
 	}
+}
+
+// clock returns the current time from the injected clock, defaulting to time.Now.
+// time.Now values carry a monotonic reading, so cooldown measurement is immune
+// to wall-clock steps such as NTP corrections.
+func (cb *CircuitBreaker) clock() time.Time {
+	if cb.now != nil {
+		return cb.now()
+	}
+	return time.Now()
 }
 
 // Allow returns true if the circuit breaker permits the request.
@@ -37,8 +48,7 @@ func (cb *CircuitBreaker) Allow() bool {
 	case "half-open":
 		return true
 	case "open":
-		elapsed := time.Now().Unix() - cb.lastFailureAt
-		if elapsed >= int64(cb.cooldownSec) {
+		if cb.clock().Sub(cb.lastFailureAt) >= cb.cooldown {
 			cb.state = "half-open"
 			return true
 		}
@@ -60,7 +70,7 @@ func (cb *CircuitBreaker) RecordFailure() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 	cb.failures++
-	cb.lastFailureAt = time.Now().Unix()
+	cb.lastFailureAt = cb.clock()
 	if cb.failures >= cb.threshold {
 		cb.state = "open"
 	}
