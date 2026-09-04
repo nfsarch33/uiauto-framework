@@ -1,6 +1,6 @@
 module github.com/nfsarch33/uiauto-framework
 
-go 1.26
+go 1.27.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
