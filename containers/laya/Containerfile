@@ -1,0 +1,22 @@
+# Laya decision layer for uiauto-framework (Apache-2.0, convaiinnovations).
+#
+# Laya is NOT a browser driver: it is a typed-decision engine (choice /
+# score / noul with calibrated probabilities, single forward pass, no text
+# generation). In this framework it is the decision layer — action
+# selection and state assertions — while browser-use (or the CDP lane)
+# stays the executor. CPU-only torch keeps the image ~2 GB instead of the
+# CUDA-bundled default's 6+.
+FROM python:3.11-slim
+
+ENV PIP_NO_CACHE_DIR=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    PYTHONUNBUFFERED=1
+
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir laya
+
+# Bake the English checkpoint so first start needs no network.
+RUN python -c "import laya; laya.load('convaiinnovations/laya')"
+
+COPY smoke.py /smoke.py
+ENTRYPOINT ["python", "/smoke.py"]
