@@ -33,7 +33,9 @@ func StateFromHTML(html string) State {
 	title := strings.TrimSpace(doc.Find("title").First().Text())
 	text := norm(doc.Find("body").Text())
 	if len(text) > maxStateTextBytes {
-		text = text[:maxStateTextBytes] + "…"
+		// Cut to the cap INCLUDING the ellipsis so the exported state is
+		// never larger than the encoder budget.
+		text = text[:maxStateTextBytes-len("…")] + "…"
 	}
 	if title == "" {
 		title = strings.TrimSpace(doc.Find("h1").First().Text())

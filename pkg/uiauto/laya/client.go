@@ -37,10 +37,16 @@ type Answer struct {
 	Confidence    float64            `json:"confidence"`
 }
 
+// Doer is the HTTP seam: *http.Client satisfies it, and tests inject a
+// wedge without standing up a server.
+type Doer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // Client talks to the laya decision service (POST {base}/predict).
 type Client struct {
 	BaseURL string
-	HTTP    *http.Client
+	HTTP    Doer
 }
 
 // New returns a client with a bounded default HTTP timeout.
