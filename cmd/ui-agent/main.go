@@ -198,6 +198,7 @@ func main() {
 	root.AddCommand(healCmd())
 	root.AddCommand(statusCmd())
 	root.AddCommand(demoCmd())
+	root.AddCommand(layaDecideCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
