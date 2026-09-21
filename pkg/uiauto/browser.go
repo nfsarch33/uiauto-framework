@@ -41,6 +41,33 @@ func NewBrowserAgent(headless bool) (*BrowserAgent, error) {
 	}, nil
 }
 
+// NewBrowserAgentWithChromePath is NewBrowserAgent with an explicit
+// Chromium binary (empty path defers to chromedp's own candidate list).
+// Added for the laya decision harness so hosts without a system Chrome
+// (WSL nodes) can pass ResolveChromePath() explicitly without changing
+// NewBrowserAgent's behaviour for every existing caller.
+func NewBrowserAgentWithChromePath(chromePath string, headless bool) (*BrowserAgent, error) {
+	if chromePath == "" {
+		return NewBrowserAgent(headless)
+	}
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", headless),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.WindowSize(1280, 800),
+		chromedp.ExecPath(chromePath),
+	)
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	return &BrowserAgent{
+		ctx: ctx,
+		cancel: func() {
+			cancel()
+			allocCancel()
+		},
+	}, nil
+}
+
 // ensureCDPTab guarantees at least one page target exists in the remote Chrome
 // before chromedp connects. Works around chromedp v0.14.2 regression (#1601)
 // where NewRemoteAllocator fails with -32000 when Chrome has zero tabs.
