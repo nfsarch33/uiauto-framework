@@ -97,8 +97,14 @@ func TestDecideRejectsMalformedJSON(t *testing.T) {
 func TestDecideHonorsContextDeadline(t *testing.T) {
 	block := make(chan struct{})
 	defer close(block)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		<-block
+	// The handler must also unblock when the CLIENT goes away: a handler
+	// that only watches its own channel kept the connection (and the CI
+	// package) alive to the 300s timeout when teardown raced the cancel.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-block:
+		case <-r.Context().Done():
+		}
 	}))
 	defer srv.Close()
 	c := New(srv.URL)
