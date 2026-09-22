@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -25,18 +26,13 @@ var spaceRe = regexp.MustCompile(`\s+`)
 // collapsed. Text is hard-capped at maxStateTextBytes (head kept, tail
 // dropped, cut marked) so the state stays inside the encoder context.
 func StateFromHTML(html string) State {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
-	if err != nil {
-		return State{"visible_text": norm(html)[:min(len(norm(html)), maxStateTextBytes)]}
-	}
+	// strings.NewReader cannot fail and x/net/html recovers from any
+	// malformed input without erroring, so the parse error path is
+	// unreachable; goquery's error is deliberately ignored.
+	doc, _ := goquery.NewDocumentFromReader(strings.NewReader(html))
 	doc.Find("script, style, noscript").Remove()
 	title := strings.TrimSpace(doc.Find("title").First().Text())
-	text := norm(doc.Find("body").Text())
-	if len(text) > maxStateTextBytes {
-		// Cut to the cap INCLUDING the ellipsis so the exported state is
-		// never larger than the encoder budget.
-		text = text[:maxStateTextBytes-len("…")] + "…"
-	}
+	text := truncateUTF8(norm(doc.Find("body").Text()), maxStateTextBytes)
 	if title == "" {
 		title = strings.TrimSpace(doc.Find("h1").First().Text())
 	}
@@ -45,17 +41,34 @@ func StateFromHTML(html string) State {
 
 func norm(s string) string { return strings.TrimSpace(spaceRe.ReplaceAllString(s, " ")) }
 
-func min(a, b int) int {
-	if a < b {
-		return a
+// truncateUTF8 cuts s to at most max bytes, marking the cut with an
+// ellipsis. The cut always backs off to a rune boundary: a byte cut can
+// split a multi-byte rune, and the JSON encoder then silently coerces the
+// broken tail to U+FFFD, so the state reaching the decision service (and
+// the evidence) would differ from the page at the cut on any localised
+// page — routinely, not rarely.
+func truncateUTF8(s string, max int) string {
+	if len(s) <= max {
+		return s
 	}
-	return b
+	cut := max - len("…")
+	if cut < 0 {
+		cut = 0
+	}
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }
 
 // QuestionSet returns a named decision schema for the UI loop. Each set
 // carries at least one action choice (with criteria the executor can act
 // on) and one state assertion (noul) — the two decision kinds every run
-// must leave in its evidence.
+// must leave in its evidence. Every choice question must include a
+// healthy-page option: a page that fits none of the failure criteria must
+// have a correct answer available, otherwise the model is forced into a
+// wrong decision and the grader's ground truth for that state is
+// contestable.
 func QuestionSet(name string) (Questions, error) {
 	switch name {
 	case "checkout_recovery":
@@ -64,10 +77,11 @@ func QuestionSet(name string) (Questions, error) {
 				"type":         "choice",
 				"instructions": "Pick the next UI automation action for a checkout recovery test.",
 				"criteria": map[string]any{
-					"retry_payment":  "A retry payment control is visible and the failure looks transient.",
-					"change_card":    "The failure suggests the card itself; switch payment method.",
-					"escalate":       "No recovery path is visible; hand the run to a human.",
-					"assert_failure": "The test should record this state as the expected failure.",
+					"retry_payment":     "A retry payment control is visible and the failure looks transient.",
+					"change_card":       "The failure suggests the card itself; switch payment method.",
+					"escalate":          "No recovery path is visible; hand the run to a human.",
+					"assert_failure":    "The test should record this state as the expected failure.",
+					"no_error_continue": "The page shows no payment error; continue the flow as a healthy page.",
 				},
 			},
 			"error_visible": {
