@@ -33,8 +33,13 @@ lives in `pkg/uiauto/browseruse`; the operator surface is
 - **No authentication, loopback only.** Same constraint as the laya
   container: acceptable only while the published port is bound to
   loopback; a tailnet/LAN publication requires a bearer token first.
-- **Pinned** `browser-use==0.13.10` (+ `langchain-openai`); the transitive
-  freeze is written to `/versions.txt` for build-to-build diffing.
+- **Pinned** `browser-use==0.13.10`; the transitive freeze is written to
+  `/versions.txt` for build-to-build diffing.
+- **CDP loopback bridge.** Chromium's DevTools endpoints reject non-localhost
+  Host headers, and the websocket URL chromium advertises is only dialable
+  from a loopback forwarder. The service therefore bridges the configured
+  CDP endpoint to `127.0.0.1:80` internally (socat) and hands browser-use
+  the loopback address — no external proxy, no browser launched.
 
 ## Build and run
 

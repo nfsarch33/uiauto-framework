@@ -98,6 +98,10 @@ services:
     image: uiauto/browser-use:integration
     container_name: uiauto-browseruse
     environment:
+      # The service bridges this to a loopback address internally (see
+      # containers/browser-use/server.py): chromium's DevTools guardrail
+      # rejects non-localhost Host headers, and its advertised websocket
+      # URL is only dialable from a loopback forwarder.
       BU_CDP_URL: http://chrome:9222
       BU_LLM_BASE_URL: http://llm-stub:8080/v1
       BU_LLM_MODEL: stub-agent

@@ -55,6 +55,10 @@ type LayaDecideExecutor struct {
 	ServiceURL  string // laya decision service base URL
 	ChromeDebug string // optional shared CDP debug URL
 	ChromePath  string // optional explicit chrome binary
+	// Capture overrides the browser capture (tests inject a fake; the
+	// default navigates a chromedp session and distils the page state,
+	// with the same one-shot settle re-capture the laya-decide loop uses).
+	Capture func(ctx context.Context, sc Scenario) (laya.State, error)
 }
 
 func (e *LayaDecideExecutor) Name() string { return "laya-decide" }
@@ -70,39 +74,18 @@ func (e *LayaDecideExecutor) Run(ctx context.Context, sc Scenario, attempt int) 
 		return rec
 	}
 
-	agent, err := e.attach()
+	capture := e.Capture
+	if capture == nil {
+		capture = e.browserCapture
+	}
+	state, err := capture(ctx, sc)
 	if err != nil {
-		rec.Errors = append(rec.Errors, fmt.Sprintf("attach browser: %v", err))
+		rec.Errors = append(rec.Errors, err.Error())
 		return rec
 	}
-	defer agent.Close()
-
-	if err := agent.Navigate(sc.URL); err != nil {
-		rec.Errors = append(rec.Errors, fmt.Sprintf("navigate %s: %v", sc.URL, err))
-		return rec
-	}
-	dom, err := agent.CaptureDOM()
-	if err != nil {
-		rec.Errors = append(rec.Errors, fmt.Sprintf("capture: %v", err))
-		return rec
-	}
-	state := laya.StateFromHTML(dom)
 	if state["visible_text"] == "" {
-		select {
-		case <-ctx.Done():
-			rec.Errors = append(rec.Errors, ctx.Err().Error())
-			return rec
-		case <-time.After(3 * time.Second):
-		}
-		if dom, err = agent.CaptureDOM(); err != nil {
-			rec.Errors = append(rec.Errors, fmt.Sprintf("re-capture: %v", err))
-			return rec
-		}
-		state = laya.StateFromHTML(dom)
-		if state["visible_text"] == "" {
-			rec.Errors = append(rec.Errors, "page state empty after re-capture; refusing to decide")
-			return rec
-		}
+		rec.Errors = append(rec.Errors, "page state empty after re-capture; refusing to decide")
+		return rec
 	}
 	state["url"] = sc.URL
 
@@ -114,9 +97,19 @@ func (e *LayaDecideExecutor) Run(ctx context.Context, sc Scenario, attempt int) 
 
 	rec.OK = true
 	rec.Steps = 1
-	for name, q := range questions {
-		want, hasGolden := sc.Golden[name]
-		a := answers[name]
+	rec.Decisions = gradeAnswers(answers, sc.Golden)
+	return rec
+}
+
+// gradeAnswers turns typed answers into graded decision records against
+// the scenario's golden set. A decision without a golden stays ungraded:
+// it still counts toward the confidence metric via Confidence, while
+// Correct stays false and the accuracy/Brier math skips it (Want empty /
+// WantBool nil).
+func gradeAnswers(answers map[string]laya.Answer, golden map[string]Golden) []DecisionRecord {
+	out := make([]DecisionRecord, 0, len(answers))
+	for name, a := range answers {
+		want, hasGolden := golden[name]
 		d := DecisionRecord{Question: name, Type: a.Type, Confidence: a.Confidence}
 		if a.Type == "choice" {
 			d.Got = a.Choice
@@ -130,18 +123,45 @@ func (e *LayaDecideExecutor) Run(ctx context.Context, sc Scenario, attempt int) 
 			d.NoulValue = a.Noul
 			if hasGolden && want.True != nil {
 				d.WantBool = want.True
-				got := *a.Noul >= 0.5
 				d.Probability = *a.Noul
-				d.Correct = got == *want.True
+				d.Correct = (*a.Noul >= 0.5) == *want.True
 			}
 		}
-		// An ungradable decision (no golden) still counts toward the
-		// confidence metric via Confidence; Correct stays false and the
-		// Brier/accuracy math skips it (Want empty / WantBool nil).
-		_ = q
-		rec.Decisions = append(rec.Decisions, d)
+		out = append(out, d)
 	}
-	return rec
+	return out
+}
+
+// browserCapture is the default capture: navigate a chromedp session,
+// distil the DOM into the laya state, and give an SPA shell one settle
+// beat before the one-shot re-capture (same contract as the laya-decide
+// loop in cmd/ui-agent).
+func (e *LayaDecideExecutor) browserCapture(ctx context.Context, sc Scenario) (laya.State, error) {
+	agent, err := e.attach()
+	if err != nil {
+		return nil, fmt.Errorf("attach browser: %w", err)
+	}
+	defer agent.Close()
+	if err := agent.Navigate(sc.URL); err != nil {
+		return nil, fmt.Errorf("navigate %s: %w", sc.URL, err)
+	}
+	dom, err := agent.CaptureDOM()
+	if err != nil {
+		return nil, fmt.Errorf("capture: %w", err)
+	}
+	state := laya.StateFromHTML(dom)
+	if state["visible_text"] != "" {
+		return state, nil
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(3 * time.Second):
+	}
+	if dom, err = agent.CaptureDOM(); err != nil {
+		return nil, fmt.Errorf("re-capture: %w", err)
+	}
+	return laya.StateFromHTML(dom), nil
 }
 
 func (e *LayaDecideExecutor) attach() (*uiauto.BrowserAgent, error) {

@@ -19,7 +19,7 @@
           "index": 0,
           "message": {
             "role": "assistant",
-            "content": "{\"current_state\": {\"evaluation_previous_goal\": \"\", \"memory\": \"fixture run: page loaded; finish immediately\", \"next_goal\": \"finish the task\"}, \"action\": [{\"done\": {\"text\": \"fixture done: form-flow page loaded and inspected\"}}]}"
+            "content": "{\"thinking\": \"fixture run: page loaded; finish immediately\", \"evaluation_previous_goal\": \"\", \"memory\": \"fixture page loaded and inspected\", \"next_goal\": \"finish the task\", \"action\": [{\"done\": {\"text\": \"fixture done: form-flow page loaded and inspected\"}}]}"
           },
           "finish_reason": "stop"
         }

@@ -225,7 +225,7 @@ func TestRunnerRepeatsAndUnknownExecutor(t *testing.T) {
 
 func TestWriteReportEmitsJSONAndMarkdown(t *testing.T) {
 	dir := t.TempDir()
-	metrics := Aggregate([]RunRecord{rec("a", "browser-use", true, 2, 1.5)})
+	metrics := Aggregate([]RunRecord{rec("a", "browser-use", true, 2, 1.5), rec("b", "browser-use", false, 2, 1.5)})
 	res := (&Rubric{Name: "r"}).Score(map[string]float64{"task_success_rate": 1})
 	jsonPath, mdPath, err := WriteReport(filepath.Join(dir, "run"), "smoke", metrics, &res, nil)
 	if err != nil {

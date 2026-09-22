@@ -16,20 +16,48 @@ BU_LLM_MODEL, BU_LLM_API_KEY_ENV (name of the env var holding the key;
 default BROWSER_USE_API_KEY).
 """
 import asyncio
+import atexit
 import json
 import os
+import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.metadata import version as pkg_version
 
-from browser_use import Agent, Browser, BrowserConfig
-from langchain_openai import ChatOpenAI
+from urllib.parse import urlparse
+
+from browser_use import Agent, Browser
+from browser_use.llm import ChatOpenAI
 
 BROWSER_USE_VERSION = pkg_version("browser-use")
 CDP_URL = os.environ.get("BU_CDP_URL", "")
 LLM_BASE_URL = os.environ.get("BU_LLM_BASE_URL", "")
 LLM_MODEL = os.environ.get("BU_LLM_MODEL", "")
 LLM_API_KEY_ENV = os.environ.get("BU_LLM_API_KEY_ENV", "BROWSER_USE_API_KEY")
+
+
+_bridge_proc = None
+
+
+def _bridge_target(cdp_url):
+    """Chromium advertises its CDP websocket using the connection's local
+    address -- through any forwarder that is ws://127.0.0.1/... (port-less,
+    i.e. port 80), which nothing can dial from another network namespace.
+    A loopback TCP bridge inside this container (socat 127.0.0.1:80 ->
+    <cdp host>:<port>) makes both the HTTP discovery request and the
+    advertised websocket URL work, and the Host header chromium then sees
+    is 127.0.0.1 -- an address its DevTools guardrail accepts."""
+    parsed = urlparse(cdp_url)
+    if parsed.hostname in ("127.0.0.1", "localhost"):
+        return cdp_url, None
+    target = f"{parsed.hostname}:{parsed.port or 80}"
+    proc = subprocess.Popen(
+        ["socat", "TCP-LISTEN:80,fork,bind=127.0.0.1,reuseaddr", f"TCP:{target}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    atexit.register(proc.terminate)
+    return "http://127.0.0.1", proc
 
 
 def _llm(base_url, model):
@@ -70,7 +98,11 @@ async def _run(req):
     if not task:
         raise RuntimeError("task is required")
 
-    browser = Browser(config=BrowserConfig(cdp_url=cdp, headless=bool(req.get("headless", True))))
+    # Route through the loopback bridge (see _bridge_target), then attach:
+    # browser_use.Browser is the session (BrowserSession) in 0.13.x; it
+    # connects over CDP and never launches a browser of its own.
+    cdp, _bridge = _bridge_target(cdp)
+    browser = Browser(cdp_url=cdp, headless=bool(req.get("headless", True)))
     agent = Agent(
         task=task,
         llm=_llm(req.get("base_url"), req.get("model")),
@@ -82,9 +114,11 @@ async def _run(req):
     return {
         "ok": True,
         "final_result": _maybe_call(history, "final_result", "") or "",
-        "steps": len(_maybe_call(history, "history", []) or []),
+        "steps": len(_maybe_call(history, "agent_steps", []) or _maybe_call(history, "history", []) or []),
         "duration_s": round(time.monotonic() - started, 3),
-        "errors": [str(e) for e in (_maybe_call(history, "errors", []) or [])],
+        # errors() can yield a bare None when the run was clean; only real
+        # errors belong in the history a caller grades on.
+        "errors": [str(e) for e in (_maybe_call(history, "errors", []) or []) if e],
         "urls_visited": len(_maybe_call(history, "urls", []) or []),
         "browser_use": BROWSER_USE_VERSION,
     }

@@ -16,7 +16,10 @@ ARG BROWSER_USE_VERSION=0.13.10
 ENV PIP_NO_CACHE_DIR=1 \
     PYTHONUNBUFFERED=1
 
-RUN pip install --no-cache-dir browser-use==${BROWSER_USE_VERSION} langchain-openai \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends socat \
+ && rm -rf /var/lib/apt/lists/* \
+ && pip install --no-cache-dir browser-use==${BROWSER_USE_VERSION} \
  && pip freeze > /versions.txt
 
 COPY server.py /server.py
