@@ -84,3 +84,66 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+
+  # browser-use executor lane. Attaches to the headless Chrome above over
+  # CDP (never launches its own browser) and takes its LLM from the
+  # WireMock OpenAI-compatible stub below, so the e2e lane is deterministic
+  # in CI. Point BU_LLM_BASE_URL at a real gateway for live runs.
+  browser-use:
+    build:
+      context: ./containers/browser-use
+    image: uiauto/browser-use:integration
+    container_name: uiauto-browseruse
+    environment:
+      BU_CDP_URL: http://chrome:9222
+      BU_LLM_BASE_URL: http://llm-stub:8080/v1
+      BU_LLM_MODEL: stub-agent
+    ports:
+      - "127.0.0.1:8091:8080"
+    depends_on:
+      chrome:
+        condition: service_healthy
+      llm-stub:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+
+  # Deterministic OpenAI-compatible chat-completions stub (WireMock).
+  # Always answers with browser-use structured output that finishes the
+  # task on the first step, proving the full lane (service -> agent -> CDP
+  # browser -> LLM endpoint -> history) without a real model.
+  llm-stub:
+    image: wiremock/wiremock:3.9.1
+    container_name: uiauto-llm-stub
+    ports:
+      - "127.0.0.1:8061:8080"
+    volumes:
+      - ./test/fixtures/llm-stub:/home/wiremock:ro
+    command: ["--port", "8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/__admin/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  # Serves examples/ (fixture pages for the lanes) over plain HTTP inside
+  # the compose network; the Chrome container navigates here.
+  fixtures:
+    image: python:3.12-slim
+    container_name: uiauto-fixtures
+    command: ["python", "-m", "http.server", "8018", "--directory", "/srv"]
+    volumes:
+      - ./examples:/srv:ro
+    ports:
+      - "127.0.0.1:8018:8018"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8018/form-flow/ >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
