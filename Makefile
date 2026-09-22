@@ -2,7 +2,7 @@ SHELL := /bin/bash
 GO    ?= go
 BIN   := bin/ui-agent
 
-.PHONY: all build test test-coverage test-integration test-integration-up test-integration-down vet lint lint-go govulncheck lint-no-target-strings ossready release-snapshot smoke form-smoke laya-image browser-use-image clean
+.PHONY: all build test test-coverage test-integration test-integration-up test-integration-down vet lint lint-go govulncheck lint-no-target-strings ossready release-snapshot smoke form-smoke laya-image browser-use-image eval-smoke clean
 
 all: build test
 
@@ -94,6 +94,11 @@ smoke: build
 
 form-smoke: build
 	./scripts/run-form-flow-demo.sh
+
+# Deterministic eval smoke: full stack, stubbed services, rubric must
+# PASS (exit non-zero otherwise). This is the CI outcome gate.
+eval-smoke:
+	./scripts/run-eval-smoke.sh
 
 ossready:
 	@test -f LICENSE

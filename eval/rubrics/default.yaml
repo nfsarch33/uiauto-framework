@@ -1,0 +1,41 @@
+# Default outcome rubric. Required criteria are gates: the eval command
+# exits non-zero when any of them fails. Thresholds for the deterministic
+# suite are tight because every service is stubbed; live suites
+# (eval/suites/live-laya.yaml in review) carry their own rubric with
+# probation thresholds (see docs/eval.md).
+name: default
+criteria:
+  - id: task-success
+    description: Every scenario run succeeded (lane + outcome check).
+    metric: task_success_rate
+    operator: ">="
+    threshold: 0.99
+    weight: 4
+    required: true
+  - id: no-flakes
+    description: Repeated scenarios never mix outcomes.
+    metric: flake_rate
+    operator: "<="
+    threshold: 0.01
+    weight: 2
+    required: true
+  - id: decision-accuracy
+    description: Golden decisions answered correctly.
+    metric: decision_accuracy
+    operator: ">="
+    threshold: 0.99
+    weight: 3
+    required: true
+  - id: decision-calibration
+    description: Mean Brier score over golden decisions (lower is better).
+    metric: brier_score
+    operator: "<="
+    threshold: 0.05
+    weight: 2
+    required: true
+  - id: latency-p95
+    description: p95 run duration stays sane (non-gate: host-dependent).
+    metric: p95_duration_s
+    operator: "<="
+    threshold: 120
+    weight: 1

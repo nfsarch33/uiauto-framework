@@ -1,0 +1,17 @@
+{
+  "name": "laya-healthz",
+  "request": {
+    "method": "GET",
+    "urlPath": "/healthz"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "ok": true,
+      "laya": "stub"
+    }
+  }
+}

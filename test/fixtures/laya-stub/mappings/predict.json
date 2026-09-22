@@ -1,0 +1,33 @@
+{
+  "name": "laya-predict",
+  "request": {
+    "method": "POST",
+    "urlPath": "/predict"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "answers": {
+        "next_action": {
+          "type": "choice",
+          "choice": "retry_payment",
+          "probabilities": {
+            "retry_payment": 0.86,
+            "change_card": 0.05,
+            "escalate": 0.05,
+            "assert_failure": 0.04
+          },
+          "confidence": 0.86
+        },
+        "error_visible": {
+          "type": "noul",
+          "noul": 0.84,
+          "confidence": 0.84
+        }
+      }
+    }
+  }
+}

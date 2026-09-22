@@ -147,3 +147,22 @@ services:
       timeout: 3s
       retries: 12
       start_period: 5s
+
+  # Deterministic laya decision stub (WireMock). The REAL laya container
+  # (containers/laya, ~2 GB) is for live runs; CI grades the harness math,
+  # not the model. Publishes on 8092 so it never collides with a real
+  # hlxn-laya service on 8090.
+  laya-stub:
+    image: wiremock/wiremock:3.9.1
+    container_name: uiauto-laya-stub
+    ports:
+      - "127.0.0.1:8092:8080"
+    volumes:
+      - ./test/fixtures/laya-stub:/home/wiremock:ro
+    command: ["--port", "8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/__admin/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
