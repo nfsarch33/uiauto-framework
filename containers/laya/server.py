@@ -1,18 +1,22 @@
 """HTTP decision service for the laya container.
 
 POST /predict  {"state": {...}, "questions": {...}} -> {"answers": {...}}
-GET  /healthz  -> {"ok": true}
+GET  /healthz  -> {"ok": true, "laya": "<installed laya version>"}
 
 Loads the English checkpoint once at startup (weights are baked into the
-image), so first request needs no network. Stdlib only — the service adds
-zero Python dependencies beyond laya itself.
+image), so first request needs no network. Stdlib only -- the service adds
+zero Python dependencies beyond laya itself. /healthz reports the baked
+laya version so stamp drift between the running container and the pinned
+build is observable without exec-ing into the container.
 """
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.metadata import version as pkg_version
 
 import laya
 
 AGENT = laya.load("convaiinnovations/laya")
+LAYA_VERSION = pkg_version("laya")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -26,7 +30,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/healthz":
-            self._send(200, {"ok": True})
+            self._send(200, {"ok": True, "laya": LAYA_VERSION})
         else:
             self._send(404, {"error": "not found"})
 
@@ -35,7 +39,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
+            length = min(int(self.headers.get("Content-Length", "0")), 8 << 20)
             req = json.loads(self.rfile.read(length) or b"{}")
             state = req.get("state") or {}
             questions = req.get("questions") or {}

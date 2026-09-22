@@ -2,7 +2,7 @@ SHELL := /bin/bash
 GO    ?= go
 BIN   := bin/ui-agent
 
-.PHONY: all build test test-coverage test-integration test-integration-up test-integration-down vet lint lint-go govulncheck lint-no-target-strings ossready release-snapshot smoke form-smoke clean
+.PHONY: all build test test-coverage test-integration test-integration-up test-integration-down vet lint lint-go govulncheck lint-no-target-strings ossready release-snapshot smoke form-smoke laya-image clean
 
 all: build test
 
@@ -75,6 +75,13 @@ lint-no-target-strings:
 	    exit 1; \
 	fi; \
 	echo "OK: framework is generic."
+
+# Decision-layer container (see containers/laya/README.md). Podman on the
+# fleet; docker builds the same Containerfile identically.
+LAYA_IMAGE ?= localhost/hlxn-laya:latest
+
+laya-image:
+	podman build -t $(LAYA_IMAGE) containers/laya
 
 smoke: build
 	./scripts/run-example-smoke.sh
