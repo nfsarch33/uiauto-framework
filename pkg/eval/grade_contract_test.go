@@ -1,7 +1,6 @@
 package eval
 
-// Contract cases ported from the review's reference implementation
-// (evalgrade). They pin two rules the review found broken:
+// Contract cases pinning two rules an earlier review found broken:
 //   1. accuracy divides by GRADED decisions only (no-golden decisions are
 //      not wrong), and the counts expose all/graded/correct separately;
 //   2. choice (multiclass, 0..2) and noul (binary, 0..1) Brier are

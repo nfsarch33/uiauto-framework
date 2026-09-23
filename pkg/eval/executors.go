@@ -73,6 +73,16 @@ func (e *LayaDecideExecutor) Run(ctx context.Context, sc Scenario, attempt int) 
 		rec.Errors = append(rec.Errors, err.Error())
 		return rec
 	}
+	// A golden the question set cannot answer is a harness bug, and an
+	// ungradable decision is NOT a pass: without this check a misspelled
+	// golden key or a wrong-shaped golden silently drops out of grading
+	// and a wrong answer walks through the rubric. Validation fails the
+	// scenario instead (fail-open: the record and errors survive; the
+	// run does not get a verdict it did not earn).
+	if errs := validateGolden(sc.Golden, questions); len(errs) > 0 {
+		rec.Errors = append(rec.Errors, errs...)
+		return rec
+	}
 
 	capture := e.Capture
 	if capture == nil {
@@ -99,6 +109,41 @@ func (e *LayaDecideExecutor) Run(ctx context.Context, sc Scenario, attempt int) 
 	rec.Steps = 1
 	rec.Decisions = gradeAnswers(answers, sc.Golden)
 	return rec
+}
+
+// validateGolden checks a scenario's golden set against the question set
+// it claims to grade: every key must name a question, a choice golden must
+// carry a label that is one of the question's criteria, and a noul golden
+// must carry its boolean. The misspelled-key case is the dangerous one --
+// it silently ungrades a decision -- so it is reported, never ignored.
+func validateGolden(golden map[string]Golden, questions laya.Questions) []string {
+	var errs []string
+	for name, g := range golden {
+		q, ok := questions[name]
+		if !ok {
+			errs = append(errs, fmt.Sprintf("golden key %q has no matching question in the set", name))
+			continue
+		}
+		switch qtype, _ := q["type"].(string); qtype {
+		case "choice":
+			if g.Label == "" {
+				errs = append(errs, fmt.Sprintf("golden %q on a choice question needs a label", name))
+				continue
+			}
+			if criteria, ok := q["criteria"].(map[string]any); ok && len(criteria) > 0 {
+				if _, in := criteria[g.Label]; !in {
+					errs = append(errs, fmt.Sprintf("golden %q label %q is not one of the question's criteria", name, g.Label))
+				}
+			}
+		case "noul":
+			if g.True == nil {
+				errs = append(errs, fmt.Sprintf("golden %q on a noul question needs true", name))
+			}
+		default:
+			errs = append(errs, fmt.Sprintf("golden %q names question %q of unsupported type %q", name, name, qtype))
+		}
+	}
+	return errs
 }
 
 // gradeAnswers turns typed answers into graded decision records against

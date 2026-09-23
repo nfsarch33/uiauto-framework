@@ -67,6 +67,10 @@ export OMNIPARSER_URL="${OMNIPARSER_URL:-http://127.0.0.1:7861}"
 # that navigates to it.
 export BROWSER_USE_URL="${BROWSER_USE_URL:-http://127.0.0.1:8091}"
 export BROWSER_USE_FIXTURE_URL="${BROWSER_USE_FIXTURE_URL:-http://fixtures:8018/form-flow/index.html}"
+# The stub's navigate target (page B) and its admin address, so the e2e
+# test can reset the stateful scenario and assert page B was visited.
+export BROWSER_USE_STUB_URL="${BROWSER_USE_STUB_URL:-http://127.0.0.1:8061}"
+export BROWSER_USE_STUB_NAV_URL="${BROWSER_USE_STUB_NAV_URL:-http://fixtures:8018/checkout-recovery/index.html}"
 
 # Wait for the browser-use lane to pass its healthcheck.
 for _ in $(seq 1 60); do

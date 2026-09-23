@@ -25,8 +25,8 @@ ui-agent eval --suite eval/suites/deterministic.yaml \
   --chrome-debug http://127.0.0.1:9333
 ```
 
-- **`deterministic.yaml`** (CI): fixture pages, WireMock LLM stub
-  (browser-use finishes on the first step) and WireMock laya stub (fixed
+- **`deterministic.yaml`** (CI): fixture pages, WireMock LLM stub (the
+  first answer navigates, every later one finishes) and WireMock laya stub (fixed
   decisions). `make eval-smoke` brings the whole stack up and requires a
   PASS verdict — it is the CI outcome gate.
 - **Live runs**: same schema, URLs pointing at real services
@@ -70,8 +70,8 @@ uninterpretable.
 
 Chance level for a binary question is 0.25; a perfectly calibrated
 confident decision scores 0. This is the metric family behind the
-probation trust threshold (ADR-0105 §9 frames it as calibration error
-≤ 0.05 over four consecutive weekly ledgers) — the
+probation trust threshold (calibration error ≤ 0.05 over four
+consecutive weekly ledgers) — the
 `decision-calibration-choice`/`decision-calibration-noul` rubric gates
 enforce the same number at suite granularity.
 
@@ -94,7 +94,8 @@ is `Σ weight(passed) / Σ weight`, reported alongside the verdict.
 name: default
 criteria:
   - {id: task-success, metric: task_success_rate, operator: ">=", threshold: 0.99, weight: 4, required: true}
-  - {id: decision-calibration, metric: brier_score, operator: "<=", threshold: 0.05, weight: 2, required: true}
+  - {id: decision-calibration-choice, metric: brier_choice, operator: "<=", threshold: 0.05, weight: 1, required: true}
+  - {id: decision-calibration-noul, metric: brier_noul, operator: "<=", threshold: 0.05, weight: 1, required: true}
 ```
 
 A criterion naming a metric the harness did not produce **fails** — a

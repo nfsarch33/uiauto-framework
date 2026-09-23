@@ -19,10 +19,11 @@ lives in `pkg/uiauto/browseruse`; the operator surface is
 
 | Var | Meaning |
 |---|---|
-| `BU_CDP_URL` | Default CDP endpoint (e.g. `http://chrome:9222`). Required unless each request passes `cdp_url`. |
+| `BU_CDP_URL` | Default CDP endpoint (e.g. `http://chrome:9222`). Required: the service never launches a browser. |
 | `BU_LLM_BASE_URL` | OpenAI-compatible base URL (gateway, vLLM, Ollama `/v1`, or the CI stub). |
 | `BU_LLM_MODEL` | Model name for that endpoint. |
 | `BU_LLM_API_KEY_ENV` | Name of the env var holding the API key (default `BROWSER_USE_API_KEY`). |
+| `BU_ALLOW_REQUEST_ENDPOINTS` | `=1` to honour per-request `cdp_url`/`base_url`/`model`. Default OFF: those fields are refused with 403. |
 
 ## Security posture
 
@@ -32,7 +33,11 @@ lives in `pkg/uiauto/browseruse`; the operator surface is
   Content-Type cross-origin without a CORS preflight this service never
   answers).
 - Request-supplied `base_url`/`model`/`cdp_url` are honoured only when
-  `BU_ALLOW_REQUEST_ENDPOINTS=1` (default off).
+  `BU_ALLOW_REQUEST_ENDPOINTS=1` (default off). The same gate covers every
+  caller-side way to pass an endpoint: `ui-agent browser-use-run
+  --cdp-url/--model/--llm-base-url`, the `TestBrowserUseLaneLive` env
+  vars, and an eval scenario's `cdp_url` -- all of them are refused (403
+  by the service) unless the flag is set.
 - The configured API key is only ever attached to the configured
   `BU_LLM_BASE_URL`; a request-supplied endpoint (when allowed) never
   receives it.
@@ -48,11 +53,12 @@ lives in `pkg/uiauto/browseruse`; the operator surface is
   loopback; a tailnet/LAN publication requires a bearer token first.
 - **Pinned** `browser-use==0.13.10`; the transitive freeze is written to
   `/versions.txt` for build-to-build diffing.
-- **CDP loopback bridge.** Chromium's DevTools endpoints reject non-localhost
+- **CDP loopback bridges.** Chromium's DevTools endpoints reject non-localhost
   Host headers, and the websocket URL chromium advertises is only dialable
-  from a loopback forwarder. The service therefore bridges the configured
-  CDP endpoint to `127.0.0.1:80` internally (socat) and hands browser-use
-  the loopback address — no external proxy, no browser launched.
+  from a loopback forwarder. The service therefore bridges each CDP target
+  to its own loopback port (one socat per target, alive-checked before
+  reuse, reaped on exit, map capped) and hands browser-use the loopback
+  address — no external proxy, no browser launched.
 
 ## Build and run
 

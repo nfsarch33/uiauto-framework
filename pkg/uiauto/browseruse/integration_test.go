@@ -2,6 +2,7 @@ package browseruse
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -10,9 +11,10 @@ import (
 
 // TestBrowserUseLaneEndToEnd drives the full executor lane against the
 // integration stack: browser-use service -> agent -> headless Chrome over
-// CDP -> WireMock LLM stub -> history. Deterministic because the stub
-// finishes the task on the first LLM call. Skipped unless the integration
-// stack is up (BROWSER_USE_URL exported by scripts/run-integration-tests.sh).
+// CDP -> WireMock LLM stub -> history. Deterministic because the stub's
+// scenario answers the first LLM call with a navigate action and every
+// later one with done. Skipped unless the integration stack is up
+// (BROWSER_USE_URL exported by scripts/run-integration-tests.sh).
 func TestBrowserUseLaneEndToEnd(t *testing.T) {
 	base := os.Getenv("BROWSER_USE_URL")
 	if base == "" {
@@ -26,6 +28,18 @@ func TestBrowserUseLaneEndToEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
+	// The navigate-then-done stub is a stateful WireMock scenario shared
+	// by every test against this stack; reset it so this test sees a fresh
+	// navigate step regardless of what ran before it.
+	if stub := os.Getenv("BROWSER_USE_STUB_URL"); stub != "" {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, stub+"/__admin/scenarios/reset", nil)
+		if err == nil {
+			if resp, err := http.DefaultClient.Do(req); err == nil {
+				_ = resp.Body.Close()
+			}
+		}
+	}
+
 	client := New(base)
 	h, err := client.Health(ctx)
 	if err != nil {
@@ -35,9 +49,12 @@ func TestBrowserUseLaneEndToEnd(t *testing.T) {
 		t.Fatalf("lane health = %+v", h)
 	}
 
+	// fixture (page A) comes from BROWSER_USE_FIXTURE_URL; the stub
+	// independently navigates to page B, so both must show up in the
+	// distinct page history the service returns.
 	res, err := client.Run(ctx, RunRequest{
 		Task:     "Open the page, confirm it loaded, then finish the task.",
-		URL:      fixture, // deterministic pre-navigation (initial_actions)
+		URL:      fixture,
 		MaxSteps: 5,
 	})
 	if err != nil {
@@ -52,10 +69,28 @@ func TestBrowserUseLaneEndToEnd(t *testing.T) {
 	if !strings.Contains(res.FinalResult, "fixture done") {
 		t.Errorf("final_result = %q, want the stub's done text", res.FinalResult)
 	}
-	// The stub's first response navigates; a lane that drops navigation
-	// (the request url or the go_to_url action) must fail here.
-	if res.URLsVisited < 1 {
-		t.Errorf("urls_visited = %d, want >= 1 (navigation must happen)", res.URLsVisited)
+	// Navigation is proven by the page history, not by the step count:
+	// the request URL A must appear (deterministic pre-navigation) AND the
+	// stub's page B must appear (the model-driven navigate action ran).
+	// A missing A means the pre-navigation was dropped; a missing B means
+	// the action never executed.
+	pageB := os.Getenv("BROWSER_USE_STUB_NAV_URL")
+	if pageB == "" {
+		pageB = "http://fixtures:8018/checkout-recovery/index.html"
+	}
+	has := func(u string) bool {
+		for _, got := range res.URLs {
+			if got == u {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(fixture) {
+		t.Errorf("page history %v does not contain the request URL %q (pre-navigation dropped)", res.URLs, fixture)
+	}
+	if !has(pageB) {
+		t.Errorf("page history %v does not contain the stub page %q (navigate action did not run)", res.URLs, pageB)
 	}
 }
 

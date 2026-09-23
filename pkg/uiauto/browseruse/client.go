@@ -35,6 +35,11 @@ type RunResult struct {
 	Steps       int      `json:"steps"`
 	DurationSec float64  `json:"duration_s"`
 	Errors      []string `json:"errors"`
+	// URLs is the distinct, non-null, non-about:blank page history of the
+	// run, in first-visit order -- the evidence that navigation (both the
+	// deterministic pre-navigation and any model-driven one) actually
+	// happened. URLsVisited is len(URLs).
+	URLs        []string `json:"urls,omitempty"`
 	URLsVisited int      `json:"urls_visited"`
 	Model       string   `json:"model,omitempty"`
 	BrowserUse  string   `json:"browser_use,omitempty"`

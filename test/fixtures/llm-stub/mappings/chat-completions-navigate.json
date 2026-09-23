@@ -23,7 +23,7 @@
           "index": 0,
           "message": {
             "role": "assistant",
-            "content": "{\"thinking\": \"fixture run: navigate to the fixture page first\", \"evaluation_previous_goal\": \"\", \"memory\": \"must navigate before finishing\", \"next_goal\": \"navigate to the fixture page\", \"action\": [{\"navigate\": {\"url\": \"http://fixtures:8018/form-flow/index.html\", \"new_tab\": false}}]}"
+            "content": "{\"thinking\": \"fixture run: navigate to the other fixture page first\", \"evaluation_previous_goal\": \"\", \"memory\": \"must navigate to page B before finishing\", \"next_goal\": \"navigate to page B\", \"action\": [{\"navigate\": {\"url\": \"http://fixtures:8018/checkout-recovery/index.html\", \"new_tab\": false}}]}"
           },
           "finish_reason": "stop"
         }

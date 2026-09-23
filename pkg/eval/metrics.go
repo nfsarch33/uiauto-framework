@@ -26,6 +26,14 @@ type SuiteMetrics struct {
 	BrierNoul          float64                     `json:"brier_noul"`          // mean binary Brier over graded nouls (0..1)
 	LowConfidenceRate  float64                     `json:"low_confidence_rate"` // decisions under the probation floor (0.5) / ALL decisions
 	PerExecutor        map[string]*ExecutorMetrics `json:"per_executor"`
+
+	// gradedChoices/gradedNouls carry whether each Brier mean had any
+	// input: a mean over zero decisions is 0, which a "<= threshold" gate
+	// would pass vacuously. Snapshot omits the key instead, so a required
+	// calibration gate on a type with nothing graded FAILS (unknown
+	// metric) rather than passing on nothing.
+	gradedChoices int
+	gradedNouls   int
 }
 
 // ExecutorMetrics is the per-lane slice of the same outcome numbers.
@@ -130,7 +138,7 @@ func Aggregate(records []RunRecord) SuiteMetrics {
 	if m.GradedDecisions > 0 {
 		m.DecisionAccuracy = float64(m.CorrectDecisions) / float64(m.GradedDecisions)
 	}
-	m.BrierChoice, m.BrierNoul = MeanBriers(records)
+	m.BrierChoice, m.BrierNoul, m.gradedChoices, m.gradedNouls = MeanBriers(records)
 	return m
 }
 
@@ -183,9 +191,13 @@ func (m SuiteMetrics) Snapshot() map[string]float64 {
 		"graded_decisions":     float64(m.GradedDecisions),
 		"correct_decisions":    float64(m.CorrectDecisions),
 		"decision_accuracy":    m.DecisionAccuracy,
-		"brier_choice":         m.BrierChoice,
-		"brier_noul":           m.BrierNoul,
 		"low_confidence_rate":  m.LowConfidenceRate,
+	}
+	if m.gradedChoices > 0 {
+		s["brier_choice"] = m.BrierChoice
+	}
+	if m.gradedNouls > 0 {
+		s["brier_noul"] = m.BrierNoul
 	}
 	for name, em := range m.PerExecutor {
 		s[name+".runs"] = float64(em.Runs)
