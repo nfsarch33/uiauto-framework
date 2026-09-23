@@ -1,8 +1,9 @@
 package uiauto
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Metrics holds all Prometheus metrics for the uiauto subsystem.

@@ -1,6 +1,9 @@
 {
-  "name": "openai-chat-completions-done",
-  "priority": 5,
+  "name": "openai-chat-completions-navigate",
+  "priority": 1,
+  "scenarioName": "lane",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "Navigated",
   "request": {
     "method": "POST",
     "urlPath": "/v1/chat/completions"
@@ -20,7 +23,7 @@
           "index": 0,
           "message": {
             "role": "assistant",
-            "content": "{\"thinking\": \"fixture run: page loaded; finish immediately\", \"evaluation_previous_goal\": \"navigate succeeded\", \"memory\": \"fixture page loaded and inspected\", \"next_goal\": \"finish the task\", \"action\": [{\"done\": {\"text\": \"fixture done: form-flow page loaded and inspected\"}}]}"
+            "content": "{\"thinking\": \"fixture run: navigate to the fixture page first\", \"evaluation_previous_goal\": \"\", \"memory\": \"must navigate before finishing\", \"next_goal\": \"navigate to the fixture page\", \"action\": [{\"navigate\": {\"url\": \"http://fixtures:8018/form-flow/index.html\", \"new_tab\": false}}]}"
           },
           "finish_reason": "stop"
         }

@@ -26,12 +26,19 @@ criteria:
     threshold: 0.99
     weight: 3
     required: true
-  - id: decision-calibration
-    description: "Mean Brier score over golden decisions (lower is better)."
-    metric: brier_score
+  - id: decision-calibration-choice
+    description: "Mean multiclass Brier over graded choices, 0..2 (lower is better)."
+    metric: brier_choice
     operator: "<="
     threshold: 0.05
-    weight: 2
+    weight: 1
+    required: true
+  - id: decision-calibration-noul
+    description: "Mean binary Brier over graded nouls, 0..1 (lower is better)."
+    metric: brier_noul
+    operator: "<="
+    threshold: 0.05
+    weight: 1
     required: true
   - id: latency-p95
     description: "p95 run duration stays sane (non-gate, host-dependent)."

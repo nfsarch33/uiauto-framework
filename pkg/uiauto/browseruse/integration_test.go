@@ -37,7 +37,7 @@ func TestBrowserUseLaneEndToEnd(t *testing.T) {
 
 	res, err := client.Run(ctx, RunRequest{
 		Task:     "Open the page, confirm it loaded, then finish the task.",
-		URL:      fixture,
+		URL:      fixture, // deterministic pre-navigation (initial_actions)
 		MaxSteps: 5,
 	})
 	if err != nil {
@@ -51,6 +51,11 @@ func TestBrowserUseLaneEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(res.FinalResult, "fixture done") {
 		t.Errorf("final_result = %q, want the stub's done text", res.FinalResult)
+	}
+	// The stub's first response navigates; a lane that drops navigation
+	// (the request url or the go_to_url action) must fail here.
+	if res.URLsVisited < 1 {
+		t.Errorf("urls_visited = %d, want >= 1 (navigation must happen)", res.URLsVisited)
 	}
 }
 

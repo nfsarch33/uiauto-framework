@@ -64,7 +64,8 @@ func renderMarkdown(rep Report) string {
 	fmt.Fprintf(&b, "## Metrics\n\n- scenarios: %d, runs: %d (%d ok)\n", m.Scenarios, m.Runs, m.SuccessfulRuns)
 	fmt.Fprintf(&b, "- task success rate: %.4f, strict scenario rate: %.4f, flake rate: %.4f\n", m.TaskSuccessRate, m.StrictScenarioRate, m.FlakeRate)
 	fmt.Fprintf(&b, "- steps: mean %.2f | duration: mean %.2fs p50 %.2fs p95 %.2fs\n", m.MeanSteps, m.MeanDurationSec, m.P50DurationSec, m.P95DurationSec)
-	fmt.Fprintf(&b, "- decisions: %d graded, accuracy %.4f, Brier %.4f, low-confidence rate %.4f\n", m.DecisionCount, m.DecisionAccuracy, m.BrierScore, m.LowConfidenceRate)
+	fmt.Fprintf(&b, "- decisions: %d total, %d graded, %d correct (accuracy %.4f) | Brier choice %.4f, noul %.4f | low-confidence rate %.4f\n",
+		m.DecisionCount, m.GradedDecisions, m.CorrectDecisions, m.DecisionAccuracy, m.BrierChoice, m.BrierNoul, m.LowConfidenceRate)
 
 	b.WriteString("\n### Per executor\n\n| executor | runs | success | mean steps | mean duration s |\n|---|---|---|---|---|\n")
 	for name, em := range m.PerExecutor {

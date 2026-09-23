@@ -24,6 +24,19 @@ lives in `pkg/uiauto/browseruse`; the operator surface is
 | `BU_LLM_MODEL` | Model name for that endpoint. |
 | `BU_LLM_API_KEY_ENV` | Name of the env var holding the API key (default `BROWSER_USE_API_KEY`). |
 
+## Security posture
+
+- `/run` requires `Content-Type: application/json` and a bounded
+  `Content-Length` (415/400 otherwise): a page visited by the attached
+  browser cannot drive the endpoint cross-site (browsers cannot set that
+  Content-Type cross-origin without a CORS preflight this service never
+  answers).
+- Request-supplied `base_url`/`model`/`cdp_url` are honoured only when
+  `BU_ALLOW_REQUEST_ENDPOINTS=1` (default off).
+- The configured API key is only ever attached to the configured
+  `BU_LLM_BASE_URL`; a request-supplied endpoint (when allowed) never
+  receives it.
+
 ## Constraints
 
 - **Never launches a browser.** No Chromium binaries are installed in the

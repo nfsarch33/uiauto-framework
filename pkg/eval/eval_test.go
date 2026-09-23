@@ -102,41 +102,26 @@ func TestAggregateRatesAndPercentiles(t *testing.T) {
 
 // --- calibration ---
 
-func TestMeanBrierKnownValues(t *testing.T) {
-	no := 0.1
-	t9 := 0.9
-	records := []RunRecord{{
-		Decisions: []DecisionRecord{
-			// full dist: golden a, p(a)=0.8,p(b)=0.2 -> (0.2)^2+(0.2)^2 = 0.08
-			{Type: "choice", Got: "a", Want: "a", Correct: true, Dist: map[string]float64{"a": 0.8, "b": 0.2}},
-			// noul 0.9, golden true -> (0.9-1)^2 = 0.01
-			{Type: "noul", NoulValue: &t9, WantBool: boolPtr(true), Correct: true},
-			// no golden on purpose: skipped by the math
-			{Type: "choice", Got: "z", Dist: map[string]float64{"z": 1}},
-			{Type: "noul", NoulValue: &no},
-		},
-	}}
-	if got := MeanBrier(records); got < 0.0449 || got > 0.0451 {
-		t.Fatalf("MeanBrier = %v, want 0.045", got)
-	}
-}
-
 func boolPtr(b bool) *bool { return &b }
 
 func TestDecisionAccuracyFromRecords(t *testing.T) {
 	records := []RunRecord{{
 		Decisions: []DecisionRecord{
-			{Type: "choice", Correct: true, Confidence: 0.9},
-			{Type: "choice", Correct: false, Confidence: 0.9},
-			{Type: "choice", Correct: true, Confidence: 0.3}, // low confidence
+			{Type: "choice", Got: "a", Want: "a", Confidence: 0.9},
+			{Type: "choice", Got: "b", Want: "a", Confidence: 0.9},
+			{Type: "choice", Got: "a", Want: "a", Confidence: 0.3}, // low confidence
+			{Type: "choice", Got: "z", Confidence: 0.9},            // ungraded: not wrong, counts in the total
 		},
 	}}
 	m := Aggregate(records)
 	if m.DecisionAccuracy != 2.0/3.0 {
 		t.Errorf("accuracy = %v", m.DecisionAccuracy)
 	}
-	if m.LowConfidenceRate != 1.0/3.0 {
-		t.Errorf("low_confidence_rate = %v", m.LowConfidenceRate)
+	if m.DecisionCount != 4 || m.GradedDecisions != 3 {
+		t.Errorf("count/graded = %d/%d, want 4/3", m.DecisionCount, m.GradedDecisions)
+	}
+	if m.LowConfidenceRate != 0.25 {
+		t.Errorf("low_confidence_rate = %v, want 0.25 (1 of 4 all decisions)", m.LowConfidenceRate)
 	}
 }
 

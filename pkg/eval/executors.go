@@ -117,16 +117,17 @@ func gradeAnswers(answers map[string]laya.Answer, golden map[string]Golden) []De
 			if hasGolden && want.Label != "" {
 				d.Want = want.Label
 				d.Probability = a.Probabilities[want.Label]
-				d.Correct = a.Choice == want.Label
 			}
 		} else if a.Type == "noul" && a.Noul != nil {
 			d.NoulValue = a.Noul
 			if hasGolden && want.True != nil {
 				d.WantBool = want.True
 				d.Probability = *a.Noul
-				d.Correct = (*a.Noul >= 0.5) == *want.True
 			}
 		}
+		// The verdict is derived, never hand-set: aggregation recomputes
+		// it through the same rule, so evidence and metrics cannot drift.
+		d.Correct = d.isCorrect()
 		out = append(out, d)
 	}
 	return out

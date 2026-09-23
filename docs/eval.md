@@ -48,21 +48,32 @@ for choice questions, expected `true` for noul).
 | `flake_rate` | repeated scenarios with mixed outcomes / repeated scenarios | zero |
 | `mean_steps` | mean agent steps per run | context |
 | `mean_duration_s`, `p50_duration_s`, `p95_duration_s` | run latency, nearest-rank percentiles | context |
-| `decision_accuracy` | golden decisions answered correctly / golden decisions | higher |
-| `brier_score` | mean Brier over golden decisions (below) | lower |
+| `decision_count` / `graded_decisions` / `correct_decisions` | all decisions / those carrying a golden / graded ones answered correctly | — |
+| `decision_accuracy` | correct / **graded** decisions (no-golden decisions are unevidenced, not wrong) | higher |
+| `brier_choice` | mean **multiclass** Brier over graded choices, 0..2 (below) | lower |
+| `brier_noul` | mean **binary** Brier over graded nouls, 0..1 (below) | lower |
 | `low_confidence_rate` | decisions with confidence < 0.5 / decisions | context |
 | `<executor>.success_rate`, `.mean_steps`, `.mean_duration_s` | per-lane slice | — |
 
-### Brier score (calibration)
+### Brier scores (calibration)
 
-For a choice decision with the full distribution it is the **multiclass
-Brier**: `Σ_c (p(c) − 1[c == golden])²`. For a noul decision it is
-`(p − y)²` with the golden boolean. Chance level for a binary question is
-0.25; a perfectly calibrated confident decision scores 0. This is the
-metric behind the probation trust threshold (ADR-0105 §9 frames it as
-calibration error ≤ 0.05 over four consecutive weekly ledgers) — the
-`decision-calibration` rubric gate enforces the same number at suite
-granularity.
+Choice and noul Brier are reported **separately** — multiclass Brier
+ranges 0..2, binary 0..1, and a mean mixing the scales would be
+uninterpretable.
+
+- Choice (multiclass): `Σ_c (p(c) − 1[c == golden])²` over the classes in
+  the distribution **union the golden class** — the golden class always
+  scores, so a model whose distribution omits it pays the full penalty.
+  A choice without a distribution is scored one-hot on its pick (0 when
+  correct, 2 when wrong).
+- Noul (binary): `(p − y)²` with the golden boolean.
+
+Chance level for a binary question is 0.25; a perfectly calibrated
+confident decision scores 0. This is the metric family behind the
+probation trust threshold (ADR-0105 §9 frames it as calibration error
+≤ 0.05 over four consecutive weekly ledgers) — the
+`decision-calibration-choice`/`decision-calibration-noul` rubric gates
+enforce the same number at suite granularity.
 
 ### Confidence floor
 

@@ -66,9 +66,10 @@ func evalCmd() *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "suite: %s\n", suite.Name)
-			fmt.Fprintf(out, "runs: %d (%d ok) | task success %.4f | flake %.4f | decision accuracy %.4f | brier %.4f\n",
+			fmt.Fprintf(out, "runs: %d (%d ok) | task success %.4f | flake %.4f | decisions %d graded %d correct %d (accuracy %.4f) | brier choice %.4f noul %.4f\n",
 				metrics.Runs, metrics.SuccessfulRuns, metrics.TaskSuccessRate, metrics.FlakeRate,
-				metrics.DecisionAccuracy, metrics.BrierScore)
+				metrics.DecisionCount, metrics.GradedDecisions, metrics.CorrectDecisions,
+				metrics.DecisionAccuracy, metrics.BrierChoice, metrics.BrierNoul)
 			if rubricResult != nil {
 				fmt.Fprintf(out, "rubric %s: verdict %s (score %.3f)\n", rubricResult.Rubric, rubricResult.Verdict, rubricResult.Score)
 			}

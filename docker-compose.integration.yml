@@ -113,7 +113,9 @@ services:
       llm-stub:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      # python:3.12-slim ships no wget; probe with python itself (the
+      # image HEALTHCHECK uses the same one-liner).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5)"]
       interval: 5s
       timeout: 3s
       retries: 24
@@ -157,8 +159,8 @@ services:
 
   # Deterministic laya decision stub (WireMock). The REAL laya container
   # (containers/laya, ~2 GB) is for live runs; CI grades the harness math,
-  # not the model. Publishes on 8092 so it never collides with a real
-  # hlxn-laya service on 8090.
+  # not the model. Publishes on 8092 so it never collides with a locally
+  # deployed laya service on its default port.
   laya-stub:
     image: wiremock/wiremock:3.9.1
     container_name: uiauto-laya-stub

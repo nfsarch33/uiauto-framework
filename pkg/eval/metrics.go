@@ -17,11 +17,14 @@ type SuiteMetrics struct {
 	MeanDurationSec    float64                     `json:"mean_duration_s"`
 	P50DurationSec     float64                     `json:"p50_duration_s"`
 	P95DurationSec     float64                     `json:"p95_duration_s"`
-	FlakeRate          float64                     `json:"flake_rate"`        // scenarios with mixed outcomes / scenarios with >1 repeat... see Aggregate
-	DecisionAccuracy   float64                     `json:"decision_accuracy"` // golden decisions correct / total (0 when none)
-	DecisionCount      int                         `json:"decision_count"`
-	BrierScore         float64                     `json:"brier_score"`         // mean Brier over golden decisions (lower is better)
-	LowConfidenceRate  float64                     `json:"low_confidence_rate"` // decisions under the probation floor (0.5) / decisions
+	FlakeRate          float64                     `json:"flake_rate"`          // scenarios with mixed outcomes / scenarios with >1 repeat... see Aggregate
+	DecisionCount      int                         `json:"decision_count"`      // ALL decisions, graded or not
+	GradedDecisions    int                         `json:"graded_decisions"`    // decisions carrying a golden
+	CorrectDecisions   int                         `json:"correct_decisions"`   // graded decisions answered correctly
+	DecisionAccuracy   float64                     `json:"decision_accuracy"`   // correct / graded (0 when none graded)
+	BrierChoice        float64                     `json:"brier_choice"`        // mean multiclass Brier over graded choices (0..2)
+	BrierNoul          float64                     `json:"brier_noul"`          // mean binary Brier over graded nouls (0..1)
+	LowConfidenceRate  float64                     `json:"low_confidence_rate"` // decisions under the probation floor (0.5) / ALL decisions
 	PerExecutor        map[string]*ExecutorMetrics `json:"per_executor"`
 }
 
@@ -46,6 +49,7 @@ func Aggregate(records []RunRecord) SuiteMetrics {
 	var durations []float64
 	var steps []int
 	decisions := 0
+	lowConfidence := 0
 	for _, r := range records {
 		m.Runs++
 		m.SuccessfulRuns += b2i(r.OK)
@@ -64,11 +68,15 @@ func Aggregate(records []RunRecord) SuiteMetrics {
 		byScenario[r.ScenarioID] = append(byScenario[r.ScenarioID], r)
 		for _, d := range r.Decisions {
 			decisions++
-			if d.Correct {
-				m.DecisionCount++
+			m.DecisionCount++
+			if graded(d) {
+				m.GradedDecisions++
+				if d.isCorrect() {
+					m.CorrectDecisions++
+				}
 			}
 			if d.Confidence < 0.5 {
-				m.LowConfidenceRate++
+				lowConfidence++
 			}
 		}
 	}
@@ -117,11 +125,44 @@ func Aggregate(records []RunRecord) SuiteMetrics {
 	}
 
 	if decisions > 0 {
-		m.DecisionAccuracy = float64(m.DecisionCount) / float64(decisions)
-		m.LowConfidenceRate /= float64(decisions)
-		m.BrierScore = MeanBrier(records)
+		m.LowConfidenceRate = float64(lowConfidence) / float64(decisions)
 	}
+	if m.GradedDecisions > 0 {
+		m.DecisionAccuracy = float64(m.CorrectDecisions) / float64(m.GradedDecisions)
+	}
+	m.BrierChoice, m.BrierNoul = MeanBriers(records)
 	return m
+}
+
+// graded mirrors the reference contract: a choice is graded when it
+// carries a golden label; a noul when it carries both a golden boolean
+// and a value. Ungraded decisions are excluded from accuracy and both
+// Brier means -- they are not wrong, they are unevidenced.
+func graded(d DecisionRecord) bool {
+	switch d.Type {
+	case "choice":
+		return d.Want != ""
+	case "noul":
+		return d.WantBool != nil && d.NoulValue != nil
+	}
+	return false
+}
+
+// isCorrect derives the verdict from the decision's own fields (the
+// Correct field is evidence output; aggregation never trusts it):
+// a choice is correct when Got == Want; a noul when (p >= 0.5) equals
+// the golden boolean -- the threshold is inclusive.
+func (d DecisionRecord) isCorrect() bool {
+	if !graded(d) {
+		return false
+	}
+	switch d.Type {
+	case "choice":
+		return d.Got == d.Want
+	case "noul":
+		return (*d.NoulValue >= 0.5) == *d.WantBool
+	}
+	return false
 }
 
 // Snapshot flattens metrics into the name->value map the rubric scores
@@ -138,9 +179,12 @@ func (m SuiteMetrics) Snapshot() map[string]float64 {
 		"p50_duration_s":       m.P50DurationSec,
 		"p95_duration_s":       m.P95DurationSec,
 		"flake_rate":           m.FlakeRate,
-		"decision_accuracy":    m.DecisionAccuracy,
 		"decision_count":       float64(m.DecisionCount),
-		"brier_score":          m.BrierScore,
+		"graded_decisions":     float64(m.GradedDecisions),
+		"correct_decisions":    float64(m.CorrectDecisions),
+		"decision_accuracy":    m.DecisionAccuracy,
+		"brier_choice":         m.BrierChoice,
+		"brier_noul":           m.BrierNoul,
 		"low_confidence_rate":  m.LowConfidenceRate,
 	}
 	for name, em := range m.PerExecutor {
