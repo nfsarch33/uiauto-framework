@@ -14,3 +14,7 @@ dist/
 
 # Local build artifacts produced by `make build` at the repo root.
 /ui-agent
+
+# Python bytecode caches are build artefacts, never sources
+__pycache__/
+*.pyc
