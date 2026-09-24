@@ -59,6 +59,38 @@ network.
        podman exec <ctr> python /smoke.py
        podman exec <ctr> pip freeze   # diff against the previous build's /versions.txt
 
+## CPU vs GPU: measured, and why CPU is the default
+
+The image builds in two variants:
+
+    podman build containers/laya -t laya:cpu                        # default: CPU wheels (~2 GB)
+    podman build --build-arg TORCH_INDEX_URL=https://pypi.org/simple \
+        containers/laya -t laya:gpu                                  # CUDA-bundled torch (~7 GB)
+
+Measured with `scripts/laya_bench.py` (60 predicts, fixed payload, one
+warmup) on the CPU container deployed for this framework:
+
+| Runtime | Model loads | Peak VRAM | predict p50 | predict p95 |
+|---|---|---|---|---|
+| CPU (pinned torch CPU wheel) | yes | n/a | **566 ms** | **679 ms** |
+| GPU, CUDA via CDI (RTX 3090) | yes (~26 s) | ~1.7 GiB | does not complete | does not complete |
+| GPU, CUDA via CDI (RTX 2070) | yes | ~1.7 GiB | does not complete | does not complete |
+
+On the GPU variants the model loads and allocates (~1.7 GiB) and plain
+CUDA compute is healthy (10x 1024^2 matmul in 0.08 s), but the model's
+forward pass never returns — a single predict exceeds 280 s on both cards,
+with and without the flash/mem-efficient SDPA kernels. A faulthandler
+dump puts the hang inside the forward call itself. This is a
+torch 2.14 + WSL2 paravirtualised-CUDA interaction, not a laya bug: the
+same wheel predicts in ~0.5 s on CPU.
+
+Decision, by these numbers: **CPU is the deployed default.** The GPU
+variant remains buildable for re-measurement whenever the host driver or
+torch stack changes; if a future run completes, re-run
+`scripts/laya_bench.py` against it and update this table. GPU-side
+placement of this checkpoint was also measured to cost about 1.7 GiB of
+VRAM when loaded, for anyone budgeting a shared card.
+
 ## Security constraint (test infra only)
 
 The service binds `0.0.0.0:8080` inside the container and carries **no
