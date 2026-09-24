@@ -3,6 +3,7 @@ package laya
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -119,4 +120,114 @@ type ctxBlockDoer struct{}
 func (d *ctxBlockDoer) Do(req *http.Request) (*http.Response, error) {
 	<-req.Context().Done()
 	return nil, req.Context().Err()
+}
+
+// answerServer answers /predict with a canned body.
+func answerServer(body string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+}
+
+// TestDecideRejectsOutOfSchemaChoice pins L2 of the adversarial review: a
+// service answering with a choice that is not one of the question's own
+// criteria must be a named error, never an actionable-looking decision the
+// executor could act on.
+func TestDecideRejectsOutOfSchemaChoice(t *testing.T) {
+	srv := answerServer(`{"answers":{"next_action":{"type":"choice","choice":"format_the_disk","probabilities":{"format_the_disk":0.9},"confidence":0.02}}}`)
+	defer srv.Close()
+	_, err := New(srv.URL).Decide(context.Background(), State{"visible_text": "x"}, checkoutQuestions())
+	if !errors.Is(err, ErrSchema) {
+		t.Fatalf("err = %v, want ErrSchema", err)
+	}
+	if !strings.Contains(err.Error(), "format_the_disk") {
+		t.Errorf("error does not name the out-of-schema choice: %v", err)
+	}
+}
+
+// TestDecideRejectsWrongTypedAnswer pins L3: a choice question answered
+// with a noul payload decodes cleanly into an empty choice — neither an
+// error nor an actionable decision downstream. The type mismatch must be
+// caught at the client boundary.
+func TestDecideRejectsWrongTypedAnswer(t *testing.T) {
+	srv := answerServer(`{"answers":{"next_action":{"type":"noul","noul":0.7,"confidence":0.7}}}`)
+	defer srv.Close()
+	_, err := New(srv.URL).Decide(context.Background(), State{"visible_text": "x"}, checkoutQuestions())
+	if !errors.Is(err, ErrSchema) {
+		t.Fatalf("err = %v, want ErrSchema", err)
+	}
+	if !strings.Contains(err.Error(), "declares") {
+		t.Errorf("error does not name the declared type: %v", err)
+	}
+}
+
+// TestDecideRejectsUnpopulatedValues: the type-appropriate field must be
+// populated — an empty choice or a noul without a value is not a verdict.
+func TestDecideRejectsUnpopulatedValues(t *testing.T) {
+	cases := map[string]string{
+		"empty choice": `{"answers":{"next_action":{"type":"choice","choice":"","confidence":0.9}}}`,
+		"nil noul":     `{"answers":{"next_action":{"type":"choice","choice":"retry_payment","confidence":0.9},"q2":{"type":"noul","confidence":0.5}}}`,
+		"unknown type": `{"answers":{"next_action":{"type":"quantum","confidence":0.5}}}`,
+	}
+	for name, body := range cases {
+		questions := Questions{
+			"next_action": checkoutQuestions()["next_action"],
+			"q2":          {"type": "noul", "instructions": "q"},
+		}
+		if name == "empty choice" || name == "unknown type" {
+			questions = Questions{"next_action": questions["next_action"]}
+		}
+		srv := answerServer(body)
+		if _, err := New(srv.URL).Decide(context.Background(), State{"visible_text": "x"}, questions); !errors.Is(err, ErrSchema) {
+			t.Errorf("%s: err = %v, want ErrSchema", name, err)
+		}
+		srv.Close()
+	}
+}
+
+// TestDecideRejectsMissingAnswer: silence about an asked question is an
+// error — "no answer" must never read as "no action needed".
+func TestDecideRejectsMissingAnswer(t *testing.T) {
+	srv := answerServer(`{"answers":{"unrelated":{"type":"choice","choice":"x","confidence":0.9}}}`)
+	defer srv.Close()
+	_, err := New(srv.URL).Decide(context.Background(), State{"visible_text": "x"}, checkoutQuestions())
+	if !errors.Is(err, ErrSchema) || !strings.Contains(err.Error(), "no answer") {
+		t.Fatalf("err = %v, want ErrSchema naming the missing question", err)
+	}
+}
+
+// TestHealthProbesVersion: /healthz reports the built laya version so
+// stamp drift is visible; transport and non-200 failures are errors.
+func TestHealthProbesVersion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			_, _ = w.Write([]byte(`{"ok":true,"laya":"0.3.5"}`))
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	h, err := New(srv.URL).Health(context.Background())
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	if !h.OK || h.Laya != "0.3.5" {
+		t.Fatalf("health = %+v", h)
+	}
+	srv500 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv500.Close()
+	if _, err := New(srv500.URL).Health(context.Background()); err == nil {
+		t.Fatal("err = nil, want 500 surfaced")
+	}
+}
+
+// TestAnswerBelowFloor: the probation ledger separates unsure from
+// wrong-and-confident via the recorded floor flag.
+func TestAnswerBelowFloor(t *testing.T) {
+	low, high := Answer{Confidence: 0.01}, Answer{Confidence: 0.99}
+	if !low.BelowFloor(0.5) || high.BelowFloor(0.5) {
+		t.Fatalf("floor check wrong: low=%v high=%v", low.BelowFloor(0.5), high.BelowFloor(0.5))
+	}
 }

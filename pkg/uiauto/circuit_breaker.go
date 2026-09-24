@@ -1,6 +1,7 @@
 package uiauto
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -29,8 +30,22 @@ func ensureCircuitBreakerMetrics(reg prometheus.Registerer) {
 			Name:      "circuit_breaker_transitions_total",
 			Help:      "Total circuit breaker state transitions",
 		}, []string{"name", "from_state", "to_state"})
-		reg.MustRegister(cbStateGauge, cbTransitionsCtr)
 	})
+	// The collectors are package-level and shared, but the registerer is
+	// per-call: a collector may be registered on many registries, and each
+	// caller's registry must actually expose it. Registering only inside
+	// the once (previous behaviour) bound the collectors to whichever
+	// registry arrived first, so go test -count>1 -- or any second
+	// registry -- silently exposed nothing. Same-registry duplicates are
+	// the only illegal case; tolerate those.
+	for _, c := range []prometheus.Collector{cbStateGauge, cbTransitionsCtr} {
+		if err := reg.Register(c); err != nil {
+			var are prometheus.AlreadyRegisteredError
+			if !errors.As(err, &are) {
+				panic(err)
+			}
+		}
+	}
 }
 
 // CircuitState represents the state of a circuit breaker.

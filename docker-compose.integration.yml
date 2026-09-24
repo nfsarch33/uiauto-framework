@@ -40,7 +40,10 @@ services:
       # collide on most workstations.
       - "127.0.0.1:9333:9222"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:9222/json/version >/dev/null || exit 1"]
+      # headless-shell ships neither wget nor curl; socat is present, so
+      # the check is "did the debug port accept a request" -- chromium
+      # listening on 9222 is the readiness contract the lanes depend on.
+      test: ["CMD-SHELL", "printf 'GET /json/version HTTP/1.0\\r\\n\\r\\n' | socat - TCP:127.0.0.1:9222 >/dev/null"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -78,6 +81,94 @@ services:
     volumes:
       - ./test/fixtures/omniparser-stub:/home/wiremock:ro
     command: ["--port", "8080", "--global-response-templating"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/__admin/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  # browser-use executor lane. Attaches to the headless Chrome above over
+  # CDP (never launches its own browser) and takes its LLM from the
+  # WireMock OpenAI-compatible stub below, so the e2e lane is deterministic
+  # in CI. Point BU_LLM_BASE_URL at a real gateway for live runs.
+  browser-use:
+    build:
+      context: ./containers/browser-use
+    image: uiauto/browser-use:integration
+    container_name: uiauto-browseruse
+    environment:
+      # The service bridges this to a loopback address internally (see
+      # containers/browser-use/server.py): chromium's DevTools guardrail
+      # rejects non-localhost Host headers, and its advertised websocket
+      # URL is only dialable from a loopback forwarder.
+      BU_CDP_URL: http://chrome:9222
+      BU_LLM_BASE_URL: http://llm-stub:8080/v1
+      BU_LLM_MODEL: stub-agent
+    ports:
+      - "127.0.0.1:8091:8080"
+    depends_on:
+      chrome:
+        condition: service_healthy
+      llm-stub:
+        condition: service_healthy
+    healthcheck:
+      # python:3.12-slim ships no wget; probe with python itself (the
+      # image HEALTHCHECK uses the same one-liner).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5)"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+
+  # Deterministic OpenAI-compatible chat-completions stub (WireMock).
+  # Always answers with browser-use structured output that finishes the
+  # task on the first step, proving the full lane (service -> agent -> CDP
+  # browser -> LLM endpoint -> history) without a real model.
+  llm-stub:
+    image: wiremock/wiremock:3.9.1
+    container_name: uiauto-llm-stub
+    ports:
+      - "127.0.0.1:8061:8080"
+    volumes:
+      - ./test/fixtures/llm-stub:/home/wiremock:ro
+    command: ["--port", "8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/__admin/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  # Serves examples/ (fixture pages for the lanes) over plain HTTP inside
+  # the compose network; the Chrome container navigates here.
+  fixtures:
+    image: python:3.12-slim
+    container_name: uiauto-fixtures
+    command: ["python", "-m", "http.server", "8018", "--directory", "/srv"]
+    volumes:
+      - ./examples:/srv:ro
+    ports:
+      - "127.0.0.1:8018:8018"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8018/form-flow/')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # Deterministic laya decision stub (WireMock). The REAL laya container
+  # (containers/laya, ~2 GB) is for live runs; CI grades the harness math,
+  # not the model. Publishes on 8092 so it never collides with a locally
+  # deployed laya service on its default port.
+  laya-stub:
+    image: wiremock/wiremock:3.9.1
+    container_name: uiauto-laya-stub
+    ports:
+      - "127.0.0.1:8092:8080"
+    volumes:
+      - ./test/fixtures/laya-stub:/home/wiremock:ro
+    command: ["--port", "8080"]
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/__admin/health >/dev/null || exit 1"]
       interval: 5s

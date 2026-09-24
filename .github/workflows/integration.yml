@@ -20,3 +20,5 @@ jobs:
           cache: true
       - name: Run Docker Compose integration suite
         run: make test-integration
+      - name: Deterministic eval smoke (rubric gate)
+        run: make eval-smoke

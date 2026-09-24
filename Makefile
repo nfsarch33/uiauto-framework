@@ -2,7 +2,7 @@ SHELL := /bin/bash
 GO    ?= go
 BIN   := bin/ui-agent
 
-.PHONY: all build test test-coverage test-integration test-integration-up test-integration-down vet lint lint-go govulncheck lint-no-target-strings ossready release-snapshot smoke form-smoke clean
+.PHONY: all build test test-coverage test-integration test-integration-up test-integration-down vet lint lint-go govulncheck lint-no-target-strings ossready release-snapshot smoke form-smoke laya-image browser-use-image eval-smoke clean
 
 all: build test
 
@@ -76,11 +76,29 @@ lint-no-target-strings:
 	fi; \
 	echo "OK: framework is generic."
 
+# Decision-layer container (see containers/laya/README.md). Podman on the
+# fleet; docker builds the same Containerfile identically.
+LAYA_IMAGE ?= localhost/hlxn-laya:latest
+
+laya-image:
+	podman build --layers -t $(LAYA_IMAGE) containers/laya
+
+# Executor-lane container (see containers/browser-use/README.md).
+BROWSER_USE_IMAGE ?= localhost/hlxn-browseruse:latest
+
+browser-use-image:
+	podman build --layers -t $(BROWSER_USE_IMAGE) containers/browser-use
+
 smoke: build
 	./scripts/run-example-smoke.sh
 
 form-smoke: build
 	./scripts/run-form-flow-demo.sh
+
+# Deterministic eval smoke: full stack, stubbed services, rubric must
+# PASS (exit non-zero otherwise). This is the CI outcome gate.
+eval-smoke:
+	./scripts/run-eval-smoke.sh
 
 ossready:
 	@test -f LICENSE

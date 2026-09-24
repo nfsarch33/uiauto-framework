@@ -1,6 +1,8 @@
 package uiauto
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -65,10 +67,27 @@ type Metrics struct {
 	AccessibilityViolationTotal *prometheus.CounterVec
 }
 
+// metricsByRegisterer makes NewMetrics idempotent per registerer: a
+// second registration of fresh collectors under the same names panics
+// (duplicate registration -- hit by go test -count>1 and any in-process
+// serve restart), and tolerating the error while keeping the fresh set
+// would silently detach metrics from the registry. The same registerer
+// therefore always gets the same *Metrics back. Registerer implementations
+// are pointers in practice, so they key the map safely.
+var (
+	metricsMu           sync.Mutex
+	metricsByRegisterer = map[prometheus.Registerer]*Metrics{}
+)
+
 // NewMetrics registers and returns all uiauto metrics with the given
 // prometheus.Registerer. Pass prometheus.DefaultRegisterer for global or a
 // custom registry for testing.
 func NewMetrics(reg prometheus.Registerer) *Metrics {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	if m, ok := metricsByRegisterer[reg]; ok {
+		return m
+	}
 	m := &Metrics{
 		ExecutorActionsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "uiauto",
@@ -370,6 +389,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.AccessibilityViolationTotal,
 	)
 
+	metricsByRegisterer[reg] = m
 	return m
 }
 

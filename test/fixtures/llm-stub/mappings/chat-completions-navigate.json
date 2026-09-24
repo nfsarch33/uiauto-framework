@@ -1,0 +1,38 @@
+{
+  "name": "openai-chat-completions-navigate",
+  "priority": 1,
+  "scenarioName": "lane",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "Navigated",
+  "request": {
+    "method": "POST",
+    "urlPath": "/v1/chat/completions"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "stub-0",
+      "object": "chat.completion",
+      "created": 0,
+      "model": "stub-agent",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"thinking\": \"fixture run: navigate to the other fixture page first\", \"evaluation_previous_goal\": \"\", \"memory\": \"must navigate to page B before finishing\", \"next_goal\": \"navigate to page B\", \"action\": [{\"navigate\": {\"url\": \"http://fixtures:8018/checkout-recovery/index.html\", \"new_tab\": false}}]}"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 1,
+        "completion_tokens": 1,
+        "total_tokens": 2
+      }
+    }
+  }
+}

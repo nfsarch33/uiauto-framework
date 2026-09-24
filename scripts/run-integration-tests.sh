@@ -62,9 +62,28 @@ export POSTGRES_URL="${POSTGRES_URL:-postgres://uiauto:uiauto@127.0.0.1:5440/uia
 export REMOTE_DEBUG_URL="${REMOTE_DEBUG_URL:-http://127.0.0.1:9333}"
 export OMNIPARSER_URL="${OMNIPARSER_URL:-http://127.0.0.1:7861}"
 
+# browser-use executor lane (deterministic: WireMock LLM stub). The
+# fixture URL is compose-internal because the Chrome container is the one
+# that navigates to it.
+export BROWSER_USE_URL="${BROWSER_USE_URL:-http://127.0.0.1:8091}"
+export BROWSER_USE_FIXTURE_URL="${BROWSER_USE_FIXTURE_URL:-http://fixtures:8018/form-flow/index.html}"
+# The stub's navigate target (page B) and its admin address, so the e2e
+# test can reset the stateful scenario and assert page B was visited.
+export BROWSER_USE_STUB_URL="${BROWSER_USE_STUB_URL:-http://127.0.0.1:8061}"
+export BROWSER_USE_STUB_NAV_URL="${BROWSER_USE_STUB_NAV_URL:-http://fixtures:8018/checkout-recovery/index.html}"
+
+# Wait for the browser-use lane to pass its healthcheck.
+for _ in $(seq 1 60); do
+  if curl -fsS http://127.0.0.1:8091/healthz >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+
 echo "[integration] running go test (no -short)"
 echo "  POSTGRES_URL=$POSTGRES_URL"
 echo "  REMOTE_DEBUG_URL=$REMOTE_DEBUG_URL"
 echo "  OMNIPARSER_URL=$OMNIPARSER_URL"
+echo "  BROWSER_USE_URL=$BROWSER_USE_URL"
 
 go test -count=1 -timeout 15m ./...

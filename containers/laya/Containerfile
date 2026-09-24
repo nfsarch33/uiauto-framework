@@ -2,18 +2,28 @@
 #
 # Laya is NOT a browser driver: it is a typed-decision engine (choice /
 # score / noul with calibrated probabilities, single forward pass, no text
-# generation). In this framework it is the decision layer — action
-# selection and state assertions — while browser-use (or the CDP lane)
+# generation). In this framework it is the decision layer -- action
+# selection and state assertions -- while browser-use (or the CDP lane)
 # stays the executor. CPU-only torch keeps the image ~2 GB instead of the
 # CUDA-bundled default's 6+.
+#
+# torch and laya are pinned so the image is reproducible: an unpinned
+# install lets a checkpoint or API change land on the next rebuild with
+# nothing in the diff to review. Bump both pins deliberately (see
+# containers/laya/README.md), rebuild, and check /healthz. The full
+# transitive freeze is written to /versions.txt for build-to-build diffing.
 FROM python:3.11-slim
+
+ARG TORCH_VERSION=2.14.0
+ARG LAYA_VERSION=0.3.5
 
 ENV PIP_NO_CACHE_DIR=1 \
     HF_HUB_DISABLE_TELEMETRY=1 \
     PYTHONUNBUFFERED=1
 
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
- && pip install --no-cache-dir laya
+RUN pip install --no-cache-dir torch==${TORCH_VERSION} --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir laya==${LAYA_VERSION} \
+ && pip freeze > /versions.txt
 
 # Bake the English checkpoint so first start needs no network.
 RUN python -c "import laya; laya.load('convaiinnovations/laya')"
@@ -21,5 +31,5 @@ RUN python -c "import laya; laya.load('convaiinnovations/laya')"
 COPY smoke.py /smoke.py
 COPY server.py /server.py
 EXPOSE 8080
-HEALTHCHECK CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5)"
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5)"
 ENTRYPOINT ["python", "/server.py"]

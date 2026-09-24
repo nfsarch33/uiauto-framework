@@ -199,6 +199,8 @@ func main() {
 	root.AddCommand(statusCmd())
 	root.AddCommand(demoCmd())
 	root.AddCommand(layaDecideCmd())
+	root.AddCommand(browserUseRunCmd())
+	root.AddCommand(evalCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

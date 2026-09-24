@@ -46,16 +46,19 @@ func TestMetricsCollector_InitialCollect(t *testing.T) {
 	}
 }
 
-func TestNewMetrics_RegistersTwicePanics(t *testing.T) {
+// TestNewMetrics_RegistersTwiceIsIdempotent: NewMetrics must be
+// idempotent per registerer. The previous contract panicked on the second
+// registration, which go test -count>1 and any in-process serve restart
+// hit as a hard crash.
+func TestNewMetrics_RegistersTwiceIsIdempotent(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	_ = NewMetrics(reg)
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic on duplicate registration")
-		}
-	}()
-	_ = NewMetrics(reg)
+	first := NewMetrics(reg)
+	if second := NewMetrics(reg); second != first {
+		t.Fatal("NewMetrics returned different sets for the same registerer")
+	}
+	if fresh := NewMetrics(prometheus.NewRegistry()); fresh == first {
+		t.Fatal("different registerers must get independent metrics sets")
+	}
 }
 
 func TestMetricsCollector_DeltaAccumulation(t *testing.T) {

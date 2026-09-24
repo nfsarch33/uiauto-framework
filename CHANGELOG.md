@@ -9,6 +9,30 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Laya decision-layer hardening: rune-safe state cap, answer schema
+  validation at the client boundary (choice ∈ criteria, type match,
+  populated values), `--min-confidence` recorded floor with
+  `confidence_below_floor` evidence, refusal to decide on an empty page
+  state, `no_error_continue` healthy-page option, `/healthz` version
+  reporting, and pinned container deps (`laya==0.3.5`, `torch==2.14.0`
+  CPU).
+- browser-use executor lane: containerized service (CDP-attach only,
+  never launches a browser), typed Go client, `ui-agent browser-use-run`
+  command, and a deterministic WireMock LLM stub for CI e2e.
+- Eval engineering: `pkg/eval` + `ui-agent eval` — suites, outcome
+  metrics (task success, flake, latency percentiles, decision accuracy,
+  Brier calibration), weighted rubrics with gates, JSON + markdown
+  reports, `make eval-smoke` CI outcome gate, and `docs/eval.md`.
+
+### Fixed
+
+- `NewMetrics` panicked on duplicate registration (`go test -count>1`,
+  in-process serve restarts); it is now idempotent per registerer.
+- Circuit-breaker Prometheus collectors were only registered on the
+  first caller's registry; they now register on every passed registerer.
+
+### Added
+
 - Extracted a generic Go UI automation framework with `ui-agent` CLI,
   CDP/chromedp browser automation, self-healing selector tiers, OmniParser
   visual grounding, and natural-language scenario execution.

@@ -1,0 +1,35 @@
+{
+  "name": "openai-chat-completions-done",
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "urlPath": "/v1/chat/completions"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "stub-0",
+      "object": "chat.completion",
+      "created": 0,
+      "model": "stub-agent",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"thinking\": \"fixture run: page loaded; finish immediately\", \"evaluation_previous_goal\": \"navigate succeeded\", \"memory\": \"fixture page loaded and inspected\", \"next_goal\": \"finish the task\", \"action\": [{\"done\": {\"text\": \"fixture done: form-flow page loaded and inspected\"}}]}"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 1,
+        "completion_tokens": 1,
+        "total_tokens": 2
+      }
+    }
+  }
+}

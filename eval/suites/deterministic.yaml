@@ -1,0 +1,31 @@
+# Deterministic eval suite: every service it touches is stubbed
+# (WireMock LLM stub for browser-use, WireMock laya stub for
+# laya-decide), so metric math and rubric verdicts are reproducible in
+# CI. Run via scripts/run-eval-smoke.sh (compose stack up) or by hand:
+#
+#   ui-agent eval --suite eval/suites/deterministic.yaml \
+#     --rubric eval/rubrics/default.yaml \
+#     --laya http://127.0.0.1:8092 \
+#     --browser-use http://127.0.0.1:8091 \
+#     --chrome-debug http://127.0.0.1:9333
+name: deterministic-smoke
+defaults:
+  repeats: 1
+  timeout_s: 180
+scenarios:
+  - id: form-flow-task-done
+    executor: browser-use
+    task: "Open the page, confirm it loaded, then finish the task."
+    url: http://fixtures:8018/form-flow/index.html
+    max_steps: 5
+    final_contains: "fixture done"
+
+  - id: checkout-recovery-decide
+    executor: laya-decide
+    url: http://fixtures:8018/checkout-recovery/index.html
+    question_set: checkout_recovery
+    golden:
+      next_action:
+        label: retry_payment
+      error_visible:
+        true: true
