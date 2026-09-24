@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- browser-use lane: `BU_LLM_AGENT_HEADER` / `BU_LLM_AGENT_ID` send a caller-identity header with every LLM request (default `X-Helixon-Agent: browser-use`), so per-agent gateway policies see this lane as itself instead of sniffing the OpenAI client User-Agent.
+
+### Added
+
 - Laya decision-layer hardening: rune-safe state cap, answer schema
   validation at the client boundary (choice ∈ criteria, type match,
   populated values), `--min-confidence` recorded floor with

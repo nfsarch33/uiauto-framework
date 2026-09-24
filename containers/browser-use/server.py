@@ -30,7 +30,9 @@ Security posture (loopback-published test infra):
 Environment: BU_CDP_URL (default CDP endpoint), BU_LLM_BASE_URL,
 BU_LLM_MODEL, BU_LLM_API_KEY_ENV (name of the env var holding the key;
 default BROWSER_USE_API_KEY), BU_ALLOW_REQUEST_ENDPOINTS (=1 to allow
-per-request endpoint overrides).
+per-request endpoint overrides), BU_LLM_AGENT_HEADER / BU_LLM_AGENT_ID
+(caller-identity header sent to the LLM endpoint; default
+X-Helixon-Agent: browser-use; empty id disables it).
 """
 import asyncio
 import atexit
@@ -53,6 +55,11 @@ LLM_BASE_URL = os.environ.get("BU_LLM_BASE_URL", "")
 LLM_MODEL = os.environ.get("BU_LLM_MODEL", "")
 LLM_API_KEY_ENV = os.environ.get("BU_LLM_API_KEY_ENV", "BROWSER_USE_API_KEY")
 ALLOW_REQUEST_ENDPOINTS = os.environ.get("BU_ALLOW_REQUEST_ENDPOINTS", "") == "1"
+# Gateways that route or gate per calling agent identify the caller by this
+# header; without it the OpenAI client's User-Agent is sniffed and this lane
+# can be mistaken for another tool. Empty BU_LLM_AGENT_ID sends no header.
+LLM_AGENT_HEADER = os.environ.get("BU_LLM_AGENT_HEADER", "X-Helixon-Agent")
+LLM_AGENT_ID = os.environ.get("BU_LLM_AGENT_ID", "browser-use")
 MAX_BODY_BYTES = 1 << 20
 MAX_STEPS_LIMIT = 200
 # Hosts a request may legitimately arrive with: the loopback names used by
@@ -81,7 +88,8 @@ def _llm(base_url, model):
     api_key = "stub-key"
     if base.rstrip("/") == LLM_BASE_URL.rstrip("/"):
         api_key = os.environ.get(LLM_API_KEY_ENV, api_key)
-    return ChatOpenAI(model=name, base_url=base, api_key=api_key, temperature=0)
+    headers = {LLM_AGENT_HEADER: LLM_AGENT_ID} if LLM_AGENT_HEADER and LLM_AGENT_ID else None
+    return ChatOpenAI(model=name, base_url=base, api_key=api_key, temperature=0, default_headers=headers)
 
 
 # --- CDP loopback bridges -------------------------------------------------
