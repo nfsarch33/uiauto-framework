@@ -1,0 +1,27 @@
+# Fusion-vs-plain comparison on the healthy-page set: the same task
+# through the plain browser-use executor and the OmniParser-grounded
+# fusion executor. Deterministic in CI (WireMock stubs); the table in
+# docs/eval.md is produced from a run of this suite.
+#
+#   ui-agent eval --suite eval/suites/fusion-vs-plain.yaml \
+#     --browser-use http://127.0.0.1:8091 \
+#     --omniparser http://127.0.0.1:7861 \
+#     --chrome-debug http://127.0.0.1:9333
+name: fusion-vs-plain
+defaults:
+  repeats: 1
+  timeout_s: 240
+scenarios:
+  - id: plain-lane-form-flow
+    executor: browser-use
+    task: "Open the page, confirm it loaded, then finish the task."
+    url: http://fixtures:8018/form-flow/index.html
+    max_steps: 6
+    final_contains: "fixture done"
+
+  - id: fusion-lane-form-flow
+    executor: browser-use-fusion
+    task: "Open the page, confirm it loaded, then finish the task."
+    url: http://fixtures:8018/form-flow/index.html
+    max_steps: 6
+    final_contains: "fixture done"
