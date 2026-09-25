@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
@@ -27,10 +26,6 @@ func TestFusionLaneEndToEnd(t *testing.T) {
 	pageA := os.Getenv("FUSION_FIXTURE_URL")
 	if pageA == "" {
 		pageA = "http://fixtures:8018/form-flow/index.html"
-	}
-	pageB := os.Getenv("FUSION_STUB_NAV_URL")
-	if pageB == "" {
-		pageB = "http://fixtures:8018/checkout-recovery/index.html"
 	}
 	if stub := os.Getenv("FUSION_STUB_URL"); stub != "" {
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, stub+"/__admin/scenarios/reset", nil)
@@ -73,5 +68,4 @@ func TestFusionLaneEndToEnd(t *testing.T) {
 	if n, _ := rec.Evidence["candidates"].(int); n == 0 {
 		t.Fatal("grounded run carried zero candidates")
 	}
-	_ = strings.TrimSpace // keep strings import stable if asserts change
 }
