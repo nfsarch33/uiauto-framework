@@ -15,7 +15,8 @@ import (
 // aggregated outcome metrics against a rubric. A FAIL verdict exits
 // non-zero so CI can gate on it; the report carries the evidence.
 func evalCmd() *cobra.Command {
-	var suitePath, rubricPath, outDir, browserUseURL, layaURL, chromeDebug string
+	var suitePath, rubricPath, outDir, browserUseURL, layaURL, chromeDebug, omniParserURL string
+	var fusionThreshold float64
 	var repeatOverride int
 	cmd := &cobra.Command{
 		Use:   "eval",
@@ -40,8 +41,9 @@ func evalCmd() *cobra.Command {
 
 			runner := &eval.Runner{
 				Executors: map[string]eval.Executor{
-					"browser-use": &eval.BrowserUseExecutor{ServiceURL: browserUseURL},
-					"laya-decide": &eval.LayaDecideExecutor{ServiceURL: layaURL, ChromeDebug: chromeDebug},
+					"browser-use":        &eval.BrowserUseExecutor{ServiceURL: browserUseURL},
+					"browser-use-fusion": eval.NewFusionExecutor(browserUseURL, omniParserURL, chromeDebug, fusionThreshold),
+					"laya-decide":        &eval.LayaDecideExecutor{ServiceURL: layaURL, ChromeDebug: chromeDebug},
 				},
 				OnRecord: func(r eval.RunRecord) {
 					fmt.Fprintf(cmd.ErrOrStderr(), "  [%s] %s attempt %d ok=%v steps=%d %.2fs\n",
@@ -87,6 +89,8 @@ func evalCmd() *cobra.Command {
 	cmd.Flags().StringVar(&browserUseURL, "browser-use", "http://127.0.0.1:8091", "browser-use executor service base URL")
 	cmd.Flags().StringVar(&layaURL, "laya", "http://127.0.0.1:8090", "laya decision service base URL")
 	cmd.Flags().StringVar(&chromeDebug, "chrome-debug", "", "attach the shared Chrome CDP session at this debug URL for page capture")
+	cmd.Flags().StringVar(&omniParserURL, "omniparser", "", "OmniParser service base URL (grounding for the browser-use-fusion executor)")
+	cmd.Flags().Float64Var(&fusionThreshold, "fusion-threshold", 0, "fusion grounding confidence threshold (0 = package default 0.35)")
 	cmd.Flags().IntVar(&repeatOverride, "repeat", 0, "override every scenario's repeat count (flake measurement)")
 	_ = cmd.MarkFlagRequired("suite")
 	return cmd
