@@ -39,6 +39,20 @@ func evalCmd() *cobra.Command {
 				}
 			}
 
+			// A fusion scenario with no OmniParser endpoint would run the
+			// plain lane under the fusion label (grounding=fallback, never
+			// surfaced) — a misconfigured eval must refuse to run.
+			fusionInSuite := false
+			for _, sc := range suite.Scenarios {
+				if sc.Executor == "browser-use-fusion" {
+					fusionInSuite = true
+					break
+				}
+			}
+			if fusionInSuite && omniParserURL == "" {
+				return fmt.Errorf("suite names executor browser-use-fusion but --omniparser is empty; point it at the OmniParser service or drop the fusion scenarios")
+			}
+
 			runner := &eval.Runner{
 				Executors: map[string]eval.Executor{
 					"browser-use":        &eval.BrowserUseExecutor{ServiceURL: browserUseURL},

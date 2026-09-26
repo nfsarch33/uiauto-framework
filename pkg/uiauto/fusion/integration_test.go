@@ -27,6 +27,10 @@ func TestFusionLaneEndToEnd(t *testing.T) {
 	if pageA == "" {
 		pageA = "http://fixtures:8018/form-flow/index.html"
 	}
+	pageB := os.Getenv("FUSION_STUB_NAV_URL")
+	if pageB == "" {
+		pageB = "http://fixtures:8018/checkout-recovery/index.html"
+	}
 	if stub := os.Getenv("FUSION_STUB_URL"); stub != "" {
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, stub+"/__admin/scenarios/reset", nil)
 		if resp, err := http.DefaultClient.Do(req); err == nil {
@@ -67,5 +71,22 @@ func TestFusionLaneEndToEnd(t *testing.T) {
 	}
 	if n, _ := rec.Evidence["candidates"].(int); n == 0 {
 		t.Fatal("grounded run carried zero candidates")
+	}
+	// The same distinct-page-history contract the plain lane's e2e
+	// asserts: page A proves the request pre-navigation ran, page B
+	// proves the stub's navigate action executed.
+	has := func(u string) bool {
+		for _, got := range rec.URLs {
+			if got == u {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(pageA) {
+		t.Errorf("page history %v does not contain the request URL %q (pre-navigation dropped)", rec.URLs, pageA)
+	}
+	if !has(pageB) {
+		t.Errorf("page history %v does not contain the stub page %q (navigate action did not run)", rec.URLs, pageB)
 	}
 }

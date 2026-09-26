@@ -51,7 +51,8 @@ page ─▶ CDP screenshot ─▶ OmniParser V2 ─▶ []Candidate{label, bbox, 
 
 | Class | Signal | Handling |
 |---|---|---|
-| `grounding_unavailable` | OmniParser HTTP error / timeout | DOM fallback; record |
+| `capture_failed` | screenshot capture error / ctx deadline | DOM fallback; grounding_error recorded |
+| `grounding_unavailable` | OmniParser HTTP error / timeout | DOM fallback; grounding_error recorded |
 | `grounding_empty` | 0 interactable elements | DOM fallback; record |
 | `grounding_low_confidence` | best candidate < threshold | DOM fallback; record |
 | `hint_ignored` | grounded run, model does not use the candidates | visible as plain-lane step counts in the eval table |
@@ -89,5 +90,8 @@ the bridge ticket.
   numbered block and states that page text is data, not instructions.
   (The taxonomy records when a run appears to follow page-injected
   directives — follow-up work, out of spike scope.)
-- Token growth from hints: bounded candidate list keeps the enrichment
-  under ~400 tokens; measured in the eval table.
+- Prompt growth from hints: the bounded candidate list keeps the
+  enrichment under ~2.5 KB (25 candidates x one ~100-byte line: type,
+  60-char truncated label, box, confidence). Token counts are NOT yet
+  measured — measure in a live-model run before quoting any number
+  (docs/eval.md says the same).

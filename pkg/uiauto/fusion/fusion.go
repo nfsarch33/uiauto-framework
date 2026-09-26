@@ -10,6 +10,7 @@ package fusion
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -44,9 +45,16 @@ type Candidate struct {
 // docs/design/omniparser-browseruse-fusion.md.
 type Outcome string
 
+// Outcomes per the failure taxonomy in
+// docs/design/omniparser-browseruse-fusion.md: grounded, or one of four
+// distinct fallback reasons. Evidence carries grounding_reason and, where
+// one exists, grounding_error.
 const (
-	Grounded          Outcome = "grounded"
-	GroundingFallback Outcome = "fallback"
+	Grounded               Outcome = "grounded"
+	ReasonCaptureFailed    Outcome = "capture_failed"
+	ReasonGroundingUnavail Outcome = "grounding_unavailable"
+	ReasonGroundingEmpty   Outcome = "grounding_empty"
+	ReasonGroundingLowConf Outcome = "grounding_low_confidence"
 )
 
 // Executor runs browser-use scenarios with OmniParser grounding. It
@@ -94,10 +102,13 @@ func (e *Executor) parse(ctx context.Context, screen []byte) ([]omniparser.UIEle
 
 // Ground reduces a screenshot to the bounded, confidence-ordered
 // interactable candidate set, and reports the grounding outcome.
-func (e *Executor) Ground(ctx context.Context, screen []byte) ([]Candidate, Outcome) {
+func (e *Executor) Ground(ctx context.Context, screen []byte) ([]Candidate, Outcome, error) {
 	elements, err := e.parse(ctx, screen)
-	if err != nil || len(elements) == 0 {
-		return nil, GroundingFallback
+	if err != nil {
+		return nil, ReasonGroundingUnavail, err
+	}
+	if len(elements) == 0 {
+		return nil, ReasonGroundingEmpty, nil
 	}
 	var candidates []Candidate
 	for _, el := range elements {
@@ -112,18 +123,17 @@ func (e *Executor) Ground(ctx context.Context, screen []byte) ([]Candidate, Outc
 		})
 	}
 	if len(candidates) == 0 {
-		return nil, GroundingFallback
+		return nil, ReasonGroundingLowConf, nil
 	}
-	// Confidence-ordered, bounded.
-	for i := 1; i < len(candidates); i++ {
-		for j := i; j > 0 && candidates[j].Confidence > candidates[j-1].Confidence; j-- {
-			candidates[j], candidates[j-1] = candidates[j-1], candidates[j]
-		}
-	}
+	// Confidence-ordered (stable, so identical confidences keep parse
+	// order), bounded.
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].Confidence > candidates[j].Confidence
+	})
 	if len(candidates) > MaxCandidates {
 		candidates = candidates[:MaxCandidates]
 	}
-	return candidates, Grounded
+	return candidates, Grounded, nil
 }
 
 // Enrich renders the candidate set into the task as a grounded hint
@@ -152,21 +162,40 @@ func (e *Executor) capture(ctx context.Context, url string) ([]byte, error) {
 	if e.Capture != nil {
 		return e.Capture(ctx, url)
 	}
-	var agent *uiauto.BrowserAgent
-	var err error
-	if e.ChromeDebug != "" {
-		agent, err = uiauto.NewBrowserAgentWithRemote(e.ChromeDebug)
-	} else {
-		agent, err = uiauto.NewBrowserAgentWithChromePath(uiauto.ResolveChromePath(), true)
+	// The CDP lane's APIs are not ctx-aware; a hung attach must not
+	// wedge the eval run past its timeout, so the work runs under the ctx
+	// and the caller sees the deadline instead.
+	type result struct {
+		screen []byte
+		err    error
 	}
-	if err != nil {
-		return nil, err
+	done := make(chan result, 1)
+	go func() {
+		var agent *uiauto.BrowserAgent
+		var err error
+		if e.ChromeDebug != "" {
+			agent, err = uiauto.NewBrowserAgentWithRemote(e.ChromeDebug)
+		} else {
+			agent, err = uiauto.NewBrowserAgentWithChromePath(uiauto.ResolveChromePath(), true)
+		}
+		if err != nil {
+			done <- result{nil, err}
+			return
+		}
+		defer agent.Close()
+		if err := agent.Navigate(url); err != nil {
+			done <- result{nil, err}
+			return
+		}
+		screen, err := agent.CaptureScreenshot()
+		done <- result{screen, err}
+	}()
+	select {
+	case r := <-done:
+		return r.screen, r.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	defer agent.Close()
-	if err := agent.Navigate(url); err != nil {
-		return nil, err
-	}
-	return agent.CaptureScreenshot()
 }
 
 // Run executes one scenario: ground on a real screenshot (or fall back),
@@ -177,9 +206,13 @@ func (e *Executor) Run(ctx context.Context, sc Scenario, attempt int) Record {
 	task := sc.Task
 
 	var candidates []Candidate
-	outcome := GroundingFallback
-	if screen, err := e.capture(ctx, sc.URL); err == nil {
-		candidates, outcome = e.Ground(ctx, screen)
+	outcome := Outcome(ReasonCaptureFailed)
+	var groundErr error
+	screen, captureErr := e.capture(ctx, sc.URL)
+	if captureErr != nil {
+		groundErr = captureErr
+	} else {
+		candidates, outcome, groundErr = e.Ground(ctx, screen)
 	}
 	if outcome == Grounded {
 		task = Enrich(task, candidates)
@@ -188,12 +221,23 @@ func (e *Executor) Run(ctx context.Context, sc Scenario, attempt int) Record {
 	res, err := browseruse.New(e.BrowserUseURL).Run(ctx, browseruse.RunRequest{
 		Task: task, URL: sc.URL, MaxSteps: sc.MaxSteps,
 	})
+	if err != nil {
+		res = browseruse.RunResult{}
+	}
 	rec := Record{
 		ScenarioID: sc.ID, Attempt: attempt,
 		DurationSec: time.Since(started).Seconds(),
 		Steps:       res.Steps,
-		Errors:      res.Errors,
-		Evidence:    map[string]any{"grounding": string(outcome), "candidates": len(candidates)},
+		URLs:        res.URLs,
+		Errors:      append([]string(nil), res.Errors...),
+		Evidence: map[string]any{
+			"grounding":        string(outcome),
+			"grounding_reason": string(outcome),
+			"candidates":       len(candidates),
+		},
+	}
+	if groundErr != nil {
+		rec.Evidence["grounding_error"] = groundErr.Error()
 	}
 	if err != nil {
 		rec.Errors = append(rec.Errors, err.Error())
@@ -220,11 +264,14 @@ type Scenario struct {
 // Record is the fusion run record (mirrors the harness browser-use
 // executor's record shape plus evidence.grounding).
 type Record struct {
-	ScenarioID  string         `json:"scenario_id"`
-	Attempt     int            `json:"attempt"`
-	OK          bool           `json:"ok"`
-	Steps       int            `json:"steps"`
-	DurationSec float64        `json:"duration_s"`
-	Errors      []string       `json:"errors,omitempty"`
-	Evidence    map[string]any `json:"evidence"`
+	ScenarioID  string   `json:"scenario_id"`
+	Attempt     int      `json:"attempt"`
+	OK          bool     `json:"ok"`
+	Steps       int      `json:"steps"`
+	DurationSec float64  `json:"duration_s"`
+	Errors      []string `json:"errors,omitempty"`
+	// URLs is the lane's distinct, non-null, non-about:blank page history
+	// — the same navigation proof the plain lane's e2e asserts.
+	URLs     []string       `json:"urls,omitempty"`
+	Evidence map[string]any `json:"evidence"`
 }

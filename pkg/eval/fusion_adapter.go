@@ -22,7 +22,7 @@ func (f *fusionAdapter) Run(ctx context.Context, sc Scenario, attempt int) RunRe
 		ID: sc.ID, Task: sc.Task, URL: sc.URL,
 		MaxSteps: sc.MaxSteps, FinalContains: sc.FinalContains,
 	}, attempt)
-	out := RunRecord{
+	return RunRecord{
 		ScenarioID:  rec.ScenarioID,
 		Executor:    f.Name(),
 		Attempt:     rec.Attempt,
@@ -30,14 +30,11 @@ func (f *fusionAdapter) Run(ctx context.Context, sc Scenario, attempt int) RunRe
 		Steps:       rec.Steps,
 		DurationSec: rec.DurationSec,
 		Errors:      rec.Errors,
+		URLs:        rec.URLs,
+		// Grounding evidence rides in the record; the report's runs table
+		// shows grounding_reason via the evidence fields below.
+		Evidence: rec.Evidence,
 	}
-	// Grounding evidence rides in the record; the report renders it via
-	// the evidence the CLI prints per run.
-	if len(rec.Evidence) > 0 {
-		out.Decisions = nil // no typed decisions in this lane
-	}
-	out.Evidence = rec.Evidence
-	return out
 }
 
 // NewFusionExecutor returns the fusion executor registered under
