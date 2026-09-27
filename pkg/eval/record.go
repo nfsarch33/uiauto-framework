@@ -12,6 +12,12 @@ type RunRecord struct {
 	DurationSec float64          `json:"duration_s"`
 	Errors      []string         `json:"errors,omitempty"`
 	Decisions   []DecisionRecord `json:"decisions,omitempty"`
+	// Evidence carries executor-specific extras (e.g. the fusion lane's
+	// grounding outcome and candidate count) into reports.
+	Evidence map[string]any `json:"evidence,omitempty"`
+	// URLs is the lane's distinct page history where the executor
+	// reports one (the fusion lane mirrors the plain lane's contract).
+	URLs []string `json:"urls,omitempty"`
 }
 
 // DecisionRecord is one typed decision with its golden comparison, when

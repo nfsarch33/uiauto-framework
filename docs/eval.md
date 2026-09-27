@@ -116,3 +116,27 @@ records — a failing scenario is data, not a crash.
   attempt) RunRecord`), register it in `cmd/ui-agent/eval.go`, and add
   its metrics via the existing aggregation (executor name automatically
   scopes per-lane metrics).
+
+
+## Fusion vs plain browser-use lane (OmniParser grounding)
+
+Design: `docs/design/omniparser-browseruse-fusion.md`. Suite:
+`eval/suites/fusion-vs-plain.yaml` (same healthy-page task through both
+executors; WireMock stubs, deterministic). Measured run 2026-09-25, local
+stack (headless Chrome, WireMock LLM navigate-then-done + OmniParser
+stub, fixture pages), `ui-agent eval` report at the run:
+
+| Executor | Success | Steps | Wall time | Grounding | Enrichment |
+|---|---|---|---|---|---|
+| browser-use (plain) | 1/1 | 2 | 0.80 s | — | — |
+| browser-use-fusion | 1/1 | 2 | 6.10 s | grounded, 2 candidates | ~120 chars of hints |
+
+Reading, honestly: on a page with a clean DOM the grounding adds its own
+cost (screenshot capture + OmniParser round trip, here ~5.3 s wall) and
+saves no steps — the plain lane's DOM state was already sufficient. The
+fusion lane's case is the other class of page (canvas-heavy, obfuscated
+or overlay DOMs where DOM state misleads); that comparison needs a
+DOM-hostile fixture set, which the spike's failure taxonomy names
+(`hint_ignored`, `wrong_element`) and the suite is the instrument for.
+Token counts are not meaningful under a stubbed model; measure them in a
+live run before quoting any.
