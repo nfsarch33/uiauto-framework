@@ -15,7 +15,7 @@ type fusionAdapter struct {
 	exec *fusion.Executor
 }
 
-func (f *fusionAdapter) Name() string { return f.exec.Name() }
+func (f *fusionAdapter) Name() string { return FusionExecutorName }
 
 func (f *fusionAdapter) Run(ctx context.Context, sc Scenario, attempt int) RunRecord {
 	rec := f.exec.Run(ctx, fusion.Scenario{
@@ -37,8 +37,12 @@ func (f *fusionAdapter) Run(ctx context.Context, sc Scenario, attempt int) RunRe
 	}
 }
 
+// FusionExecutorName is the single name suites use to select the fusion
+// executor (the CLI scan and the runner map key both read it).
+const FusionExecutorName = "browser-use-fusion"
+
 // NewFusionExecutor returns the fusion executor registered under
-// "browser-use-fusion" for eval suites.
+// FusionExecutorName for eval suites.
 func NewFusionExecutor(browserUseURL, omniParserURL, chromeDebug string, threshold float64) Executor {
 	return &fusionAdapter{exec: &fusion.Executor{
 		BrowserUseURL: browserUseURL,

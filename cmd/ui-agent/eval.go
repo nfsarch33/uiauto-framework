@@ -40,11 +40,11 @@ func evalCmd() *cobra.Command {
 			}
 
 			// A fusion scenario with no OmniParser endpoint would run the
-			// plain lane under the fusion label (grounding=fallback, never
-			// surfaced) — a misconfigured eval must refuse to run.
+			// plain lane under the fusion label — a misconfigured eval
+			// must refuse to run rather than report mislabeled results.
 			fusionInSuite := false
 			for _, sc := range suite.Scenarios {
-				if sc.Executor == "browser-use-fusion" {
+				if sc.Executor == eval.FusionExecutorName {
 					fusionInSuite = true
 					break
 				}
@@ -55,9 +55,9 @@ func evalCmd() *cobra.Command {
 
 			runner := &eval.Runner{
 				Executors: map[string]eval.Executor{
-					"browser-use":        &eval.BrowserUseExecutor{ServiceURL: browserUseURL},
-					"browser-use-fusion": eval.NewFusionExecutor(browserUseURL, omniParserURL, chromeDebug, fusionThreshold),
-					"laya-decide":        &eval.LayaDecideExecutor{ServiceURL: layaURL, ChromeDebug: chromeDebug},
+					"browser-use":           &eval.BrowserUseExecutor{ServiceURL: browserUseURL},
+					eval.FusionExecutorName: eval.NewFusionExecutor(browserUseURL, omniParserURL, chromeDebug, fusionThreshold),
+					"laya-decide":           &eval.LayaDecideExecutor{ServiceURL: layaURL, ChromeDebug: chromeDebug},
 				},
 				OnRecord: func(r eval.RunRecord) {
 					fmt.Fprintf(cmd.ErrOrStderr(), "  [%s] %s attempt %d ok=%v steps=%d %.2fs\n",

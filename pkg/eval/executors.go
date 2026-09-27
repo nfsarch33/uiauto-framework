@@ -37,6 +37,9 @@ func (e *BrowserUseExecutor) Run(ctx context.Context, sc Scenario, attempt int) 
 		rec.Errors = append(rec.Errors, err.Error())
 		return rec
 	}
+	// The distinct page history rides on the record so plain and fusion
+	// rows are comparable in one report.
+	rec.URLs = res.URLs
 	if sc.FinalContains != "" && !strings.Contains(res.FinalResult, sc.FinalContains) {
 		rec.Errors = append(rec.Errors, fmt.Sprintf("final result %q does not contain %q", res.FinalResult, sc.FinalContains))
 		return rec
