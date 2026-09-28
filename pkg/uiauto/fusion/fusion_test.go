@@ -3,6 +3,8 @@ package fusion
 import (
 	"context"
 	"errors"
+	"math"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -58,6 +60,11 @@ func TestGroundFiltersOrdersBounds(t *testing.T) {
 		el(90, "low", 0.10, 0, 1, 5, 5), // under threshold
 		omniparser.UIElement{ID: 91, Type: "text", Interactable: false, Confidence: 0.99}, // not interactable
 	)
+	// SHUFFLE: a pre-sorted fixture passes with the sort deleted (round-3
+	// review proved it by deletion); a deterministic shuffle forces the
+	// sort to do real work.
+	rnd := rand.New(rand.NewSource(7))
+	rnd.Shuffle(len(many), func(i, j int) { many[i], many[j] = many[j], many[i] })
 	e := &Executor{Parse: func(_ context.Context, _ []byte) ([]omniparser.UIElement, error) { return many, nil }}
 	candidates, outcome, err := e.Ground(context.Background(), nil)
 	if outcome != Grounded || err != nil {
@@ -66,9 +73,24 @@ func TestGroundFiltersOrdersBounds(t *testing.T) {
 	if len(candidates) != MaxCandidates {
 		t.Fatalf("len=%d, want %d", len(candidates), MaxCandidates)
 	}
+	// The boundary the review asked for explicitly, on the dimension the
+	// sort actually governs: among INTERACTABLE elements, minimum KEPT
+	// confidence must exceed maximum dropped-by-confidence (a
+	// non-interactable element is dropped for a different reason and is
+	// excluded from the comparison).
+	kept := map[int]bool{}
+	for _, c := range candidates {
+		kept[c.ID] = true
+	}
+	maxDropped := math.Inf(-1)
+	for _, m := range many {
+		if !kept[m.ID] && m.Interactable && m.Confidence > maxDropped {
+			maxDropped = m.Confidence
+		}
+	}
 	minKept := candidates[len(candidates)-1].Confidence
-	if minKept <= 0.10 {
-		t.Fatalf("under-threshold element survived the bound: min kept %.2f", minKept)
+	if minKept <= maxDropped {
+		t.Fatalf("boundary violated: min kept %.4f <= max dropped %.4f", minKept, maxDropped)
 	}
 	for i := 1; i < len(candidates); i++ {
 		if candidates[i].Confidence > candidates[i-1].Confidence {
@@ -91,6 +113,11 @@ func TestGroundDistinctFallbackReasons(t *testing.T) {
 		{"low confidence", func(_ context.Context, _ []byte) ([]omniparser.UIElement, error) {
 			return els(el(1, "weak", 0.1, 0, 0, 1, 1)), nil
 		}, ReasonGroundingLowConf, false},
+		{"all non-interactable", func(_ context.Context, _ []byte) ([]omniparser.UIElement, error) {
+			return []omniparser.UIElement{
+				{ID: 1, Type: "text", Confidence: 0.9, Interactable: false},
+			}, nil
+		}, ReasonGroundingEmpty, false},
 	}
 	for _, tc := range cases {
 		e := &Executor{Parse: tc.parse}
@@ -121,13 +148,23 @@ func TestEnrichEscapesHostileOCRText(t *testing.T) {
 			t.Errorf("enrichment missing %q:\n%s", want, got)
 		}
 	}
-	// The candidate must occupy exactly one line, and the forged numbered
-	// line must not become its own line inside the block.
+	// The %q escaping must be visible in the output itself: the quote is
+	// escaped (\" two chars) and the newline renders as a visible backslash-n
+	// — exactly what dies when %q is replaced with %s (round-3 review
+	// proved the previous check survived that mutation).
 	lines := strings.Split(got, "\n")
 	candidateLines := 0
 	for _, l := range lines {
 		if strings.Contains(l, "Retry") {
 			candidateLines++
+			// The escaped quote and the visible backslash-n must both be
+			// IN the rendered line — these two die when %q becomes %s.
+			if !strings.Contains(l, `\"`) {
+				t.Errorf("quote not escaped in the rendered line: %q", l)
+			}
+			if !strings.Contains(l, `\n`) {
+				t.Errorf("newline not rendered as a visible backslash-n: %q", l)
+			}
 			if strings.HasPrefix(strings.TrimSpace(l), "99.") {
 				t.Errorf("forged numbered line rendered as its own line: %q", l)
 			}
@@ -135,6 +172,11 @@ func TestEnrichEscapesHostileOCRText(t *testing.T) {
 	}
 	if candidateLines != 1 {
 		t.Fatalf("hostile candidate spread over %d lines, want exactly 1:\n%s", candidateLines, got)
+	}
+	for _, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "99.") {
+			t.Fatalf("forged numbered line rendered as its own line anywhere: %q", l)
+		}
 	}
 	// Long OCR text is truncated.
 	long := Enrich("t", []Candidate{{Type: "text", Text: strings.Repeat("x", 200)}})

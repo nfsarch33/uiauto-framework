@@ -129,7 +129,7 @@ stub, fixture pages), `ui-agent eval` report at the run:
 | Executor | Success | Steps | Wall time | Grounding | Enrichment |
 |---|---|---|---|---|---|
 | browser-use (plain) | 1/1 | 2 | 0.80 s | — | — |
-| browser-use-fusion | 1/1 | 2 | 6.10 s | grounded, 2 candidates | ~120 chars of hints |
+| browser-use-fusion | 1/1 | 2 | 6.10 s | grounded, 2 candidates | enrichment_bytes in evidence (measured per run) |
 
 Reading, honestly: on a page with a clean DOM the grounding adds its own
 cost (screenshot capture + OmniParser round trip, here ~5.3 s wall) and

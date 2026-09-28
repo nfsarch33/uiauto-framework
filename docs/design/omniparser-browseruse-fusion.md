@@ -17,7 +17,7 @@ but nothing consumes it as an action candidate set.
 ## Design
 
 ```
-page ─▶ CDP screenshot ─▶ OmniParser V2 ─▶ []Candidate{label, bbox, conf}
+page ─▶ CDP screenshot (ctx-aware) ─▶ OmniParser V2 ─▶ []Candidate{label, bbox, conf}
                                                   │
                             conf ≥ threshold ──────┴──── conf < threshold
                                   │                           │
@@ -56,7 +56,7 @@ page ─▶ CDP screenshot ─▶ OmniParser V2 ─▶ []Candidate{label, bbox, 
 | `grounding_empty` | 0 interactable elements | DOM fallback; record |
 | `grounding_low_confidence` | best candidate < threshold | DOM fallback; record |
 | `hint_ignored` | grounded run, model does not use the candidates | visible as plain-lane step counts in the eval table |
-| `wrong_element` | model acts on a non-candidate | steps succeed/fail as the plain lane; taxonomy field in the report |
+| `wrong_element` | model acts on a non-candidate | steps succeed/fail as the plain lane (not emitted as a report field in this spike) |
 | `lane_failure` | browser-use run errors | existing lane error contract (`ok=false` + errors) |
 
 ## Prototype scope (this spike)
@@ -74,14 +74,11 @@ page ─▶ CDP screenshot ─▶ OmniParser V2 ─▶ []Candidate{label, bbox, 
   deterministic loop.
 - Eval: healthy-page set, fusion vs plain, table in `docs/eval.md`.
 
-## Not in scope (agreed interface with the platform lane)
+## Not in scope
 
-The platform browser-tool bridge (separate ticket) exposes the lane to
-the platform's agents over HTTP. The fusion executor is a framework-side
-executor and does not add endpoints; the interface point is the existing
-`POST /run {task,url,...}` contract plus the task-text enrichment, which
-needs no service change. Interface agreement is recorded as a comment on
-the bridge ticket.
+Platform-side bridges and endpoints are out of scope for this repo: the
+fusion executor is a framework-side executor, adds no endpoints, and only
+enriches the task text of the existing run contract.
 
 ## Risks
 
@@ -91,7 +88,6 @@ the bridge ticket.
   (The taxonomy records when a run appears to follow page-injected
   directives — follow-up work, out of spike scope.)
 - Prompt growth from hints: the bounded candidate list keeps the
-  enrichment under ~2.5 KB (25 candidates x one ~100-byte line: type,
-  60-char truncated label, box, confidence). Token counts are NOT yet
-  measured — measure in a live-model run before quoting any number
-  (docs/eval.md says the same).
+  enrichment small, and the run record carries the MEASURED size in
+  evidence (enrichment_bytes). Token counts are NOT yet measured —
+  measure in a live-model run before quoting any number.

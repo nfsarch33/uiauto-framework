@@ -110,6 +110,18 @@ func (e *Executor) Ground(ctx context.Context, screen []byte) ([]Candidate, Outc
 	if len(elements) == 0 {
 		return nil, ReasonGroundingEmpty, nil
 	}
+	// Interactability is counted first: a page whose elements are all
+	// non-interactable has nothing to act on (grounding_empty), which is
+	// a different fact from everything being under-confidence.
+	interactable := 0
+	for _, el := range elements {
+		if el.Interactable {
+			interactable++
+		}
+	}
+	if interactable == 0 {
+		return nil, ReasonGroundingEmpty, nil
+	}
 	var candidates []Candidate
 	for _, el := range elements {
 		if !el.Interactable || el.Confidence < e.threshold() {
@@ -183,7 +195,20 @@ func (e *Executor) capture(ctx context.Context, url string) ([]byte, error) {
 			return
 		}
 		defer agent.Close()
+		// The agent APIs take no ctx, so a ctx that fired while the
+		// attach completed must be re-checked here: a late attach must
+		// never Navigate the shared CDP browser after Run returned. A
+		// truly hung attach still leaks the goroutine until the agent
+		// APIs take a ctx — recorded in the design note.
+		if err := ctx.Err(); err != nil {
+			done <- result{nil, err}
+			return
+		}
 		if err := agent.Navigate(url); err != nil {
+			done <- result{nil, err}
+			return
+		}
+		if err := ctx.Err(); err != nil {
 			done <- result{nil, err}
 			return
 		}
@@ -231,9 +256,12 @@ func (e *Executor) Run(ctx context.Context, sc Scenario, attempt int) Record {
 		URLs:        res.URLs,
 		Errors:      append([]string(nil), res.Errors...),
 		Evidence: map[string]any{
-			"grounding":        string(outcome),
+			// One key: grounding_reason (the old "grounding" duplicate is
+			// gone). enrichment_bytes records what the hint block actually
+			// cost, replacing every unmeasured character estimate.
 			"grounding_reason": string(outcome),
 			"candidates":       len(candidates),
+			"enrichment_bytes": len(task) - len(sc.Task),
 		},
 	}
 	if groundErr != nil {
