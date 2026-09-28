@@ -11,6 +11,10 @@ import (
 	"github.com/nfsarch33/uiauto-framework/pkg/eval"
 )
 
+// errNotRun is the NOT_RUN verdict as an exit path: exit code 3, so a
+// dead executor is distinguishable from a failing suite (exit 1).
+var errNotRun = errors.New("eval: suite not run (executor unhealthy)")
+
 // evalCmd runs an eval suite through the execution lanes and scores the
 // aggregated outcome metrics against a rubric. A FAIL verdict exits
 // non-zero so CI can gate on it; the report carries the evidence.
@@ -18,6 +22,7 @@ func evalCmd() *cobra.Command {
 	var suitePath, rubricPath, outDir, browserUseURL, layaURL, chromeDebug, omniParserURL string
 	var fusionThreshold float64
 	var repeatOverride int
+	var promTextfile string
 	cmd := &cobra.Command{
 		Use:   "eval",
 		Short: "Run an eval suite through the execution lanes, aggregate outcome metrics, and score them against a rubric",
@@ -64,11 +69,28 @@ func evalCmd() *cobra.Command {
 						r.Executor, r.ScenarioID, r.Attempt, r.OK, r.Steps, r.DurationSec)
 				},
 			}
+			verdict, reason := eval.PreFlight(cmd.Context(), suite, runner.Executors)
+			if verdict != eval.VerdictOK {
+				// NOT_RUN, never "0 failures": no records exist, the
+				// textfile says so, and the exit code is distinct.
+				fmt.Fprintf(cmd.ErrOrStderr(), "verdict: %s (%s)\n", verdict, reason)
+				if promTextfile != "" {
+					if err := eval.WriteNightlyTextfile(promTextfile, verdict, eval.SuiteMetrics{}, nil); err != nil {
+						return err
+					}
+				}
+				return errNotRun
+			}
 			records, err := runner.RunSuite(cmd.Context(), suite)
 			if err != nil {
 				return err
 			}
 			metrics := eval.Aggregate(records)
+			if promTextfile != "" {
+				if err := eval.WriteNightlyTextfile(promTextfile, eval.VerdictOK, metrics, records); err != nil {
+					return err
+				}
+			}
 			var rubricResult *eval.RubricResult
 			if rubric != nil {
 				res := rubric.Score(metrics.Snapshot())
@@ -106,6 +128,7 @@ func evalCmd() *cobra.Command {
 	cmd.Flags().StringVar(&omniParserURL, "omniparser", "", "OmniParser service base URL (grounding for the browser-use-fusion executor)")
 	cmd.Flags().Float64Var(&fusionThreshold, "fusion-threshold", 0, "fusion grounding confidence threshold (0 = package default 0.35)")
 	cmd.Flags().IntVar(&repeatOverride, "repeat", 0, "override every scenario's repeat count (flake measurement)")
+	cmd.Flags().StringVar(&promTextfile, "prom-textfile", "", "write nightly Prometheus textfile gauges to this path (verdict, runs, pass@N, allowlist violations)")
 	_ = cmd.MarkFlagRequired("suite")
 	return cmd
 }

@@ -1,0 +1,93 @@
+# Nightly browser-use regression suite: 10 fixture tasks x 3 epochs.
+# Every task's success is a final-state assertion (final_contains), never
+# an LLM judge; every task carries a host allowlist, so one off-list
+# navigation fails the run (applyHostAllowlist). The real-internet entry
+# is example.com (the IANA reservation page — static, public, no sign-in);
+# everything else is a local fixture page. Run gated by PreFlight: an
+# unhealthy executor is NOT_RUN (exit 3), never "0 failures".
+name: nightly-regression
+defaults:
+  repeats: 3
+  timeout_s: 180
+scenarios:
+  - id: example-domain-heading
+    executor: browser-use
+    task: "Open the site and confirm the heading, then finish the task."
+    url: https://example.com/
+    max_steps: 5
+    final_contains: "Example Domain"
+    allowed_hosts: ["example.com"]
+
+  - id: woo-admin-product-list
+    executor: browser-use
+    task: "Open the products page, confirm the table lists Aluminium Water Bottle, then finish the task."
+    url: http://fixtures:8018/woo-admin/products.html
+    max_steps: 6
+    final_contains: "product list read"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-order-view
+    executor: browser-use
+    task: "Open the order page, confirm order 1042 is Processing, then finish the task."
+    url: http://fixtures:8018/woo-admin/order.html
+    max_steps: 6
+    final_contains: "order view read"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-draft-preview
+    executor: browser-use
+    task: "Open the draft preview page, confirm the draft is not visible to customers, then finish the task."
+    url: http://fixtures:8018/woo-admin/draft.html
+    max_steps: 6
+    final_contains: "draft preview read"
+    allowed_hosts: ["fixtures"]
+
+  - id: form-flow-task-done
+    executor: browser-use
+    task: "Open the page, confirm it loaded, then finish the task."
+    url: http://fixtures:8018/form-flow/index.html
+    max_steps: 5
+    final_contains: "fixture done"
+    allowed_hosts: ["fixtures"]
+
+  - id: form-flow-heading-echo
+    executor: browser-use
+    task: "Open the form page and report its heading, then finish the task."
+    url: http://fixtures:8018/form-flow/index.html
+    max_steps: 5
+    final_contains: "fixture done"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-products-return-visit
+    executor: browser-use
+    task: "Open the products page, then open the order page and confirm both loaded, then finish the task."
+    url: http://fixtures:8018/woo-admin/products.html
+    max_steps: 8
+    final_contains: "order view read"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-draft-status-check
+    executor: browser-use
+    task: "Open the draft preview and confirm the price-free status line, then finish the task."
+    url: http://fixtures:8018/woo-admin/draft.html
+    max_steps: 5
+    final_contains: "draft preview read"
+    allowed_hosts: ["fixtures"]
+
+  - id: checkout-recovery-decide
+    executor: laya-decide
+    url: http://fixtures:8018/checkout-recovery/index.html
+    question_set: checkout_recovery
+    golden:
+      next_action:
+        label: retry_payment
+      error_visible:
+        true: true
+
+  - id: example-domain-title-echo
+    executor: browser-use
+    task: "Open the site and echo its title, then finish the task."
+    url: https://example.com/
+    max_steps: 5
+    final_contains: "Example Domain"
+    allowed_hosts: ["example.com"]

@@ -47,6 +47,11 @@ type Scenario struct {
 	// FinalContains: browser-use success additionally requires the final
 	// result to contain this substring.
 	FinalContains string `yaml:"final_contains"`
+	// AllowedHosts, when set, turns the run into a fenced walk: every
+	// distinct host in the lane's page history must be on the list. One
+	// off-list navigation fails the run — a nightly regression suite
+	// must never wander onto a site it was not pointed at.
+	AllowedHosts []string `yaml:"allowed_hosts"`
 }
 
 // Golden is the expected decision for one question. For choice: Label.
