@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -48,15 +49,23 @@ func TestRunCaptureBlocksUntilCtxDeadline(t *testing.T) {
 
 // fakeAgent records which of its methods ran, so the ctx re-check tests
 // can prove a LATE attach never Navigates and a late Navigate never
-// screenshots the shared browser.
+// screenshots the shared browser. Counters are atomic and closed
+// signals goroutine exit: capture() may return via the already-fired
+// ctx.Done() BEFORE the goroutine's writes land, so the tests wait for
+// the barrier before reading.
 type fakeAgent struct {
-	navigated   bool
-	screenshots int
+	navigated   atomic.Bool
+	screenshots atomic.Int32
 	onNavigate  func()
+	closed      chan struct{}
+}
+
+func newFakeAgent() *fakeAgent {
+	return &fakeAgent{closed: make(chan struct{})}
 }
 
 func (f *fakeAgent) Navigate(_ string) error {
-	f.navigated = true
+	f.navigated.Store(true)
 	if f.onNavigate != nil {
 		f.onNavigate()
 	}
@@ -64,18 +73,18 @@ func (f *fakeAgent) Navigate(_ string) error {
 }
 
 func (f *fakeAgent) CaptureScreenshot() ([]byte, error) {
-	f.screenshots++
+	f.screenshots.Add(1)
 	return []byte("png"), nil
 }
 
-func (f *fakeAgent) Close() {}
+func (f *fakeAgent) Close() { close(f.closed) }
 
 // TestCaptureRecheckBeforeNavigate: the attach succeeds, but the ctx has
 // already expired — the executor must return the ctx error WITHOUT
 // navigating the shared CDP browser. Deleting the first ctx.Err()
 // re-check is the mutant: Navigate would run.
 func TestCaptureRecheckBeforeNavigate(t *testing.T) {
-	agent := &fakeAgent{}
+	agent := newFakeAgent()
 	e := &Executor{
 		BrowserUseURL: "http://unused",
 		attach:        func() (cdpAgent, error) { return agent, nil },
@@ -86,7 +95,8 @@ func TestCaptureRecheckBeforeNavigate(t *testing.T) {
 	if _, err := e.capture(ctx, "http://example/"); err == nil {
 		t.Fatal("want the ctx error surfaced, got nil")
 	}
-	if agent.navigated {
+	<-agent.closed // the goroutine (and its deferred Close) has settled
+	if agent.navigated.Load() {
 		t.Fatal("Navigate ran after the ctx expired — the pre-Navigate re-check is gone")
 	}
 }
@@ -97,7 +107,8 @@ func TestCaptureRecheckBeforeNavigate(t *testing.T) {
 // second ctx.Err() re-check is the mutant: CaptureScreenshot would run.
 func TestCaptureRecheckBeforeScreenshot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	agent := &fakeAgent{onNavigate: cancel}
+	agent := newFakeAgent()
+	agent.onNavigate = cancel
 	e := &Executor{
 		BrowserUseURL: "http://unused",
 		attach:        func() (cdpAgent, error) { return agent, nil },
@@ -106,7 +117,8 @@ func TestCaptureRecheckBeforeScreenshot(t *testing.T) {
 	if _, err := e.capture(ctx, "http://example/"); err == nil {
 		t.Fatal("want the ctx error surfaced, got nil")
 	}
-	if agent.screenshots != 0 {
+	<-agent.closed // the goroutine (and its deferred Close) has settled
+	if agent.screenshots.Load() != 0 {
 		t.Fatal("CaptureScreenshot ran after the ctx expired — the pre-screenshot re-check is gone")
 	}
 }
