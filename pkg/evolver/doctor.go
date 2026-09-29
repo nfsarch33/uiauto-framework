@@ -15,14 +15,14 @@ import (
 type AgentDoctorConfig struct {
 	CheckDocker       bool
 	CheckLLM          bool
-	CheckMem0         bool
+	CheckEngram       bool
 	CheckPatternStore bool
 	CheckEvolver      bool
 	CheckFleet        bool
 	CheckGo           bool
 
 	LLMHealthURL     string
-	Mem0HealthURL    string
+	EngramHealthURL  string
 	PatternStorePath string
 	CapsuleStorePath string
 }
@@ -32,13 +32,13 @@ func DefaultAgentDoctorConfig() AgentDoctorConfig {
 	return AgentDoctorConfig{
 		CheckDocker:       true,
 		CheckLLM:          true,
-		CheckMem0:         true,
+		CheckEngram:       true,
 		CheckPatternStore: true,
 		CheckEvolver:      true,
 		CheckFleet:        true,
 		CheckGo:           true,
 		LLMHealthURL:      "http://localhost:18789/health",
-		Mem0HealthURL:     "http://localhost:8019/health",
+		EngramHealthURL:   "http://localhost:8280/healthz",
 		PatternStorePath:  "data/patterns",
 		CapsuleStorePath:  "data/evolver/capsules",
 	}
@@ -86,7 +86,7 @@ func (d *AgentDoctor) buildSuiteSpec() doctor.SuiteSpec {
 	entries := []checkEntry{
 		{d.cfg.CheckDocker, "docker", d.checkDocker},
 		{d.cfg.CheckLLM, "llm-router", d.checkLLM},
-		{d.cfg.CheckMem0, "mem0", d.checkMem0},
+		{d.cfg.CheckEngram, "engram", d.checkEngram},
 		{d.cfg.CheckPatternStore, "pattern-store", d.checkPatternStore},
 		{d.cfg.CheckEvolver, "evolver", d.checkEvolver},
 		{d.cfg.CheckFleet, "fleet", d.checkFleet},
@@ -115,15 +115,15 @@ func (d *AgentDoctor) checkLLM(ctx context.Context) doctor.Check {
 	return doctor.AssertHTTPHealth(ctx, "llm-router", d.cfg.LLMHealthURL)
 }
 
-func (d *AgentDoctor) checkMem0(ctx context.Context) doctor.Check {
-	url := d.cfg.Mem0HealthURL
+func (d *AgentDoctor) checkEngram(ctx context.Context) doctor.Check {
+	url := d.cfg.EngramHealthURL
 	if url == "" {
-		return doctor.Check{Name: "mem0", Status: doctor.StatusWarn, Message: "Mem0 health URL not configured"}
+		return doctor.Check{Name: "engram", Status: doctor.StatusWarn, Message: "Engram health URL not configured"}
 	}
-	c := doctor.AssertHTTPHealth(ctx, "mem0", url)
+	c := doctor.AssertHTTPHealth(ctx, "engram", url)
 	if c.Status == doctor.StatusFail {
 		c.Status = doctor.StatusWarn
-		c.Message = "Mem0 unreachable (fleet pattern sharing degraded)"
+		c.Message = "Engram unreachable (fleet pattern sharing degraded)"
 	}
 	return c
 }
