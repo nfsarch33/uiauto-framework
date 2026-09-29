@@ -197,6 +197,12 @@ func (b *BrowserAgent) CaptureDOM() (string, error) {
 	return html, err
 }
 
+// SetViewport overrides the tab's viewport (CSS pixels) without
+// resizing a window — headless slide rendering at exact sizes.
+func (b *BrowserAgent) SetViewport(width, height int) error {
+	return chromedp.Run(b.ctx, chromedp.EmulateViewport(int64(width), int64(height)))
+}
+
 // CaptureScreenshot captures the current viewport of the attached tab.
 func (b *BrowserAgent) CaptureScreenshot() ([]byte, error) {
 	var buf []byte
