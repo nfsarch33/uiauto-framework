@@ -21,7 +21,7 @@ func TestMetrics_RecordReport(t *testing.T) {
 				Checks: []Check{
 					{Name: "docker", Status: StatusPass, Message: "ok"},
 					{Name: "llm", Status: StatusFail, Message: "down"},
-					{Name: "mem0", Status: StatusWarn, Message: "degraded"},
+					{Name: "engram", Status: StatusWarn, Message: "degraded"},
 				},
 			},
 			{

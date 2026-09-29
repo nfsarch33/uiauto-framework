@@ -67,7 +67,7 @@ govulncheck:
 # a downstream scenarios repo (see plugin seams), not the framework.
 lint-no-target-strings:
 	@echo "Scanning for forbidden target-specific strings..."
-	@MATCHES=$$(grep -ril -E 'zendesk|amazon[ -]connect|\bz3n\b|cc-nl|lastpass|\bccp\b|\bzaf\b' \
+	@MATCHES=$$(grep -ril -E 'zendesk|amazon[ -]connect|\bz3n\b|cc-nl|lastpass|\bccp\b|\bzaf\b|[mM]em0' \
 	    pkg/ cmd/ examples/ docs/ 2>/dev/null || true); \
 	if [ -n "$$MATCHES" ]; then \
 	    echo "ERROR: target-specific strings found in framework code:"; \

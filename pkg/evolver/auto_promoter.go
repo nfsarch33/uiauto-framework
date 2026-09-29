@@ -2,7 +2,7 @@
 // action → reward loop with capsule_id reward proxy), layer 4 (Sandbox via
 // allow-list + risk gate; ComplianceChecker via rolling rollback budget;
 // Approval via cooldown), layer 5 (capsule_id, outcome_id, trace_id ride
-// inside the capsule metadata for downstream Prometheus + Mem0).
+// inside the capsule metadata for downstream Prometheus + Engram).
 package evolver
 
 import (

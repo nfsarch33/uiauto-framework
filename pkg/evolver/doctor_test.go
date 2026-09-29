@@ -15,13 +15,13 @@ func TestDefaultAgentDoctorConfig(t *testing.T) {
 	cfg := DefaultAgentDoctorConfig()
 	assert.True(t, cfg.CheckDocker)
 	assert.True(t, cfg.CheckLLM)
-	assert.True(t, cfg.CheckMem0)
+	assert.True(t, cfg.CheckEngram)
 	assert.True(t, cfg.CheckPatternStore)
 	assert.True(t, cfg.CheckEvolver)
 	assert.True(t, cfg.CheckFleet)
 	assert.True(t, cfg.CheckGo)
 	assert.NotEmpty(t, cfg.LLMHealthURL)
-	assert.NotEmpty(t, cfg.Mem0HealthURL)
+	assert.NotEmpty(t, cfg.EngramHealthURL)
 }
 
 func TestAgentDoctor_RunAll_GoCheck(t *testing.T) {

@@ -268,7 +268,7 @@ func TestEmitCircuitChange(t *testing.T) {
 	e.On(handler)
 
 	EmitCircuitChange(e, CircuitEvent{
-		StoreName: "mem0-primary",
+		StoreName: "engram-primary",
 		OldState:  "closed",
 		NewState:  "open",
 		Failures:  3,
@@ -292,7 +292,7 @@ func TestEmitCircuitRecovery(t *testing.T) {
 	e.On(handler)
 
 	EmitCircuitChange(e, CircuitEvent{
-		StoreName: "mem0-primary",
+		StoreName: "engram-primary",
 		OldState:  "half-open",
 		NewState:  "closed",
 		Failures:  0,
