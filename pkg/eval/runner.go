@@ -27,8 +27,6 @@ type Runner struct {
 	OnRecord func(RunRecord)
 }
 
-// RunSuite runs all scenarios serially: deterministic ordering, no lane
-// interference, and repeats measure flake rather than parallelism noise.
 // applyHostAllowlist fails the record when the lane's page history left
 // the scenario's host list. DETECTION AFTER NAVIGATION: the executor
 // already visited the page; this converts an off-list visit into a
@@ -70,6 +68,8 @@ func normaliseHost(h string) string {
 	return strings.ToLower(strings.TrimSuffix(h, "."))
 }
 
+// RunSuite runs all scenarios serially: deterministic ordering, no lane
+// interference, and repeats measure flake rather than parallelism noise.
 func (r *Runner) RunSuite(ctx context.Context, s *Suite) ([]RunRecord, error) {
 	var records []RunRecord
 	for _, sc := range s.Scenarios {

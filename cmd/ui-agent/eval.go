@@ -21,8 +21,8 @@ func evalCmd() *cobra.Command {
 	var promTextfile string
 	cmd := &cobra.Command{
 		SilenceUsage: true,
-		Use:   "eval",
-		Short: "Run an eval suite through the execution lanes, aggregate outcome metrics, and score them against a rubric",
+		Use:          "eval",
+		Short:        "Run an eval suite through the execution lanes, aggregate outcome metrics, and score them against a rubric",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			suite, err := eval.LoadSuite(suitePath)
 			if err != nil {
