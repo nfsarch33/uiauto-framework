@@ -14,6 +14,17 @@ import (
 	"testing"
 )
 
+// skipWithoutBrowser is the repo's CI convention (cmd/ui-agent
+// laya_decide_test.go): hosted runners have a Chrome binary on PATH but
+// its chromedp websocket launch times out, so browser-driven tests run
+// on dev hosts and skip under CI=1 / -short.
+func skipWithoutBrowser(t *testing.T) {
+	t.Helper()
+	if os.Getenv("CI") != "" || testing.Short() {
+		t.Skip("browser-driven test: skipped on CI/-short (runner Chrome websocket launch times out)")
+	}
+}
+
 var updateGoldens = flag.Bool("update", false, "regenerate golden slide images")
 
 // requireChrome mirrors pkg/uiauto's test gate: chromedp defers the
@@ -160,6 +171,7 @@ func TestPixelDiffBasics(t *testing.T) {
 // dimension assert fails.
 func TestGoldenSlide(t *testing.T) {
 	requireChrome(t)
+	skipWithoutBrowser(t)
 
 	html, err := RenderHTML(goldenTemplate, goldenTokens, Slide{Kicker: "Case study", Title: "Approvals, not guesswork"})
 	if err != nil {
