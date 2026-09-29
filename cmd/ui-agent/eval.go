@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nfsarch33/uiauto-framework/pkg/eval"
+	"github.com/nfsarch33/uiauto-framework/pkg/uiauto/fusion"
 )
 
 // evalCmd runs an eval suite through the execution lanes and scores the
@@ -44,15 +45,9 @@ func evalCmd() *cobra.Command {
 			// A fusion scenario with no OmniParser endpoint would run the
 			// plain lane under the fusion label — a misconfigured eval
 			// must refuse to run rather than report mislabeled results.
-			fusionInSuite := false
-			for _, sc := range suite.Scenarios {
-				if sc.Executor == eval.FusionExecutorName {
-					fusionInSuite = true
-					break
-				}
-			}
-			if fusionInSuite && omniParserURL == "" {
-				return fmt.Errorf("suite names executor browser-use-fusion but --omniparser is empty; point it at the OmniParser service or drop the fusion scenarios")
+			// A PLAIN suite with no --omniparser is not a misconfiguration.
+			if err := fusionRefusal(suite, omniParserURL); err != nil {
+				return err
 			}
 
 			runner := &eval.Runner{
@@ -62,8 +57,7 @@ func evalCmd() *cobra.Command {
 					"laya-decide":           &eval.LayaDecideExecutor{ServiceURL: layaURL, ChromeDebug: chromeDebug},
 				},
 				OnRecord: func(r eval.RunRecord) {
-					fmt.Fprintf(cmd.ErrOrStderr(), "  [%s] %s attempt %d ok=%v steps=%d %.2fs\n",
-						r.Executor, r.ScenarioID, r.Attempt, r.OK, r.Steps, r.DurationSec)
+					fmt.Fprintln(cmd.ErrOrStderr(), progressLine(r))
 				},
 			}
 			// NOT_RUN, never "0 failures": an unhealthy executor writes a
@@ -130,11 +124,38 @@ func evalCmd() *cobra.Command {
 	cmd.Flags().StringVar(&layaURL, "laya", "http://127.0.0.1:8090", "laya decision service base URL")
 	cmd.Flags().StringVar(&chromeDebug, "chrome-debug", "", "attach the shared Chrome CDP session at this debug URL for page capture")
 	cmd.Flags().StringVar(&omniParserURL, "omniparser", "", "OmniParser service base URL (grounding for the browser-use-fusion executor)")
-	cmd.Flags().Float64Var(&fusionThreshold, "fusion-threshold", 0, "fusion grounding confidence threshold (0 = package default 0.35)")
+	cmd.Flags().Float64Var(&fusionThreshold, "fusion-threshold", 0, fmt.Sprintf("fusion grounding confidence threshold (0 = package default %v)", eval.FusionDefaultThreshold))
 	cmd.Flags().IntVar(&repeatOverride, "repeat", 0, "override every scenario's repeat count (flake measurement)")
 	cmd.Flags().StringVar(&promTextfile, "prom-textfile", "", "write nightly Prometheus gauges to this path, atomically (verdict, runs, pass@N, allowlist violations); written on every exit path")
 	_ = cmd.MarkFlagRequired("suite")
 	return cmd
+}
+
+// progressLine renders the per-run stderr line. A fusion run that fell
+// back says WHY inline (grounding_reason from the evidence), so a
+// fallback epidemic is visible in the raw log without opening reports.
+func progressLine(r eval.RunRecord) string {
+	line := fmt.Sprintf("  [%s] %s attempt %d ok=%v steps=%d %.2fs",
+		r.Executor, r.ScenarioID, r.Attempt, r.OK, r.Steps, r.DurationSec)
+	if reason, ok := r.Evidence["grounding_reason"].(string); ok && reason != "" && reason != string(fusion.Grounded) {
+		line += fmt.Sprintf(" grounding=%s", reason)
+	}
+	return line
+}
+
+// fusionRefusal returns the misconfiguration error for a suite that
+// names the fusion executor without an OmniParser endpoint. A plain
+// suite never refuses, whatever --omniparser holds.
+func fusionRefusal(suite *eval.Suite, omniParserURL string) error {
+	for _, sc := range suite.Scenarios {
+		if sc.Executor == eval.FusionExecutorName {
+			if omniParserURL == "" {
+				return fmt.Errorf("suite names executor browser-use-fusion but --omniparser is empty; point it at the OmniParser service or drop the fusion scenarios")
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 // errNotRun is the NOT_RUN verdict as an exit path: exit code 3, so a

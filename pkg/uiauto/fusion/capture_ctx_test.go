@@ -45,3 +45,68 @@ func TestRunCaptureBlocksUntilCtxDeadline(t *testing.T) {
 		t.Fatal("Run did not return after its ctx deadline — the capture goroutine wedged the run")
 	}
 }
+
+// fakeAgent records which of its methods ran, so the ctx re-check tests
+// can prove a LATE attach never Navigates and a late Navigate never
+// screenshots the shared browser.
+type fakeAgent struct {
+	navigated   bool
+	screenshots int
+	onNavigate  func()
+}
+
+func (f *fakeAgent) Navigate(_ string) error {
+	f.navigated = true
+	if f.onNavigate != nil {
+		f.onNavigate()
+	}
+	return nil
+}
+
+func (f *fakeAgent) CaptureScreenshot() ([]byte, error) {
+	f.screenshots++
+	return []byte("png"), nil
+}
+
+func (f *fakeAgent) Close() {}
+
+// TestCaptureRecheckBeforeNavigate: the attach succeeds, but the ctx has
+// already expired — the executor must return the ctx error WITHOUT
+// navigating the shared CDP browser. Deleting the first ctx.Err()
+// re-check is the mutant: Navigate would run.
+func TestCaptureRecheckBeforeNavigate(t *testing.T) {
+	agent := &fakeAgent{}
+	e := &Executor{
+		BrowserUseURL: "http://unused",
+		attach:        func() (cdpAgent, error) { return agent, nil },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // expires BEFORE capture runs
+
+	if _, err := e.capture(ctx, "http://example/"); err == nil {
+		t.Fatal("want the ctx error surfaced, got nil")
+	}
+	if agent.navigated {
+		t.Fatal("Navigate ran after the ctx expired — the pre-Navigate re-check is gone")
+	}
+}
+
+// TestCaptureRecheckBeforeScreenshot: Navigate succeeds, but cancels the
+// ctx on its way out (the deadline lands mid-capture) — the executor
+// must return the ctx error WITHOUT taking a screenshot. Deleting the
+// second ctx.Err() re-check is the mutant: CaptureScreenshot would run.
+func TestCaptureRecheckBeforeScreenshot(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	agent := &fakeAgent{onNavigate: cancel}
+	e := &Executor{
+		BrowserUseURL: "http://unused",
+		attach:        func() (cdpAgent, error) { return agent, nil },
+	}
+
+	if _, err := e.capture(ctx, "http://example/"); err == nil {
+		t.Fatal("want the ctx error surfaced, got nil")
+	}
+	if agent.screenshots != 0 {
+		t.Fatal("CaptureScreenshot ran after the ctx expired — the pre-screenshot re-check is gone")
+	}
+}
