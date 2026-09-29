@@ -1,0 +1,96 @@
+# Nightly browser-use regression suite: 10 DISTINCT fixture tasks x 3
+# epochs. Success is a final-state assertion, never an LLM judge: each
+# browser-use task requires the agent to end its final message with a
+# named phrase (an explicit protocol the model can follow), so
+# final_contains asserts the task's end state, not page text it happens
+# to quote. Every browser-use task carries a host allowlist; enforcement
+# is detection after navigation (applyHostAllowlist). The only
+# non-fixture target is example.com (static, public, no sign-in); the
+# suite never touches signed-in third-party sites. PreFlight gates the
+# run: an unhealthy executor is NOT_RUN (exit 3), never "0 failures".
+name: nightly-regression
+defaults:
+  repeats: 3
+  timeout_s: 180
+scenarios:
+  - id: example-domain-heading
+    executor: browser-use
+    task: "Open the site, confirm the heading reads Example Domain, and end your final message with the phrase: HEADING CONFIRMED"
+    url: https://example.com/
+    max_steps: 5
+    final_contains: "HEADING CONFIRMED"
+    allowed_hosts: ["example.com"]
+
+  - id: example-domain-first-link
+    executor: browser-use
+    task: "Open the site, report the text of the first link on the page, and end your final message with the phrase: LINK REPORTED"
+    url: https://example.com/
+    max_steps: 5
+    final_contains: "LINK REPORTED"
+    allowed_hosts: ["example.com"]
+
+  - id: woo-admin-product-list
+    executor: browser-use
+    task: "Open the products page, confirm the table lists Aluminium Water Bottle, and end your final message with the phrase: PRODUCTS READ"
+    url: http://fixtures:8018/woo-admin/products.html
+    max_steps: 6
+    final_contains: "PRODUCTS READ"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-published-count
+    executor: browser-use
+    task: "Open the products page, count how many products have status Published, and end your final message with the phrase: PUBLISHED COUNT 2"
+    url: http://fixtures:8018/woo-admin/products.html
+    max_steps: 6
+    final_contains: "PUBLISHED COUNT 2"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-order-view
+    executor: browser-use
+    task: "Open the order page, confirm order 1042 is Processing, and end your final message with the phrase: ORDER PROCESSING"
+    url: http://fixtures:8018/woo-admin/order.html
+    max_steps: 6
+    final_contains: "ORDER PROCESSING"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-order-items
+    executor: browser-use
+    task: "Open the order page, confirm the order contains a Cork Yoga Block, and end your final message with the phrase: ORDER ITEMS READ"
+    url: http://fixtures:8018/woo-admin/order.html
+    max_steps: 6
+    final_contains: "ORDER ITEMS READ"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-draft-preview
+    executor: browser-use
+    task: "Open the draft preview page, confirm the draft is not visible to customers until published, and end your final message with the phrase: DRAFT NOT LIVE"
+    url: http://fixtures:8018/woo-admin/draft.html
+    max_steps: 6
+    final_contains: "DRAFT NOT LIVE"
+    allowed_hosts: ["fixtures"]
+
+  - id: woo-admin-products-to-order
+    executor: browser-use
+    task: "Open the products page, follow the link to the order page, confirm the order status, and end your final message with the phrase: ORDER PROCESSING"
+    url: http://fixtures:8018/woo-admin/products.html
+    max_steps: 8
+    final_contains: "ORDER PROCESSING"
+    allowed_hosts: ["fixtures"]
+
+  - id: form-flow-task-done
+    executor: browser-use
+    task: "Open the page, complete the form flow it presents, and end your final message with the phrase: FORM FLOW DONE"
+    url: http://fixtures:8018/form-flow/index.html
+    max_steps: 6
+    final_contains: "FORM FLOW DONE"
+    allowed_hosts: ["fixtures"]
+
+  - id: checkout-recovery-decide
+    executor: laya-decide
+    url: http://fixtures:8018/checkout-recovery/index.html
+    question_set: checkout_recovery
+    golden:
+      next_action:
+        label: retry_payment
+      error_visible:
+        true: true

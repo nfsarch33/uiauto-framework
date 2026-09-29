@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -203,6 +204,11 @@ func main() {
 	root.AddCommand(evalCmd())
 
 	if err := root.Execute(); err != nil {
+		// NOT_RUN is its own exit code: a down executor must be
+		// distinguishable from a failing suite on the wire.
+		if errors.Is(err, errNotRun) {
+			os.Exit(3)
+		}
 		os.Exit(1)
 	}
 }

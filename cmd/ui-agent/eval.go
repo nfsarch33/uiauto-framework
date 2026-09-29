@@ -18,9 +18,11 @@ func evalCmd() *cobra.Command {
 	var suitePath, rubricPath, outDir, browserUseURL, layaURL, chromeDebug, omniParserURL string
 	var fusionThreshold float64
 	var repeatOverride int
+	var promTextfile string
 	cmd := &cobra.Command{
-		Use:   "eval",
-		Short: "Run an eval suite through the execution lanes, aggregate outcome metrics, and score them against a rubric",
+		SilenceUsage: true,
+		Use:          "eval",
+		Short:        "Run an eval suite through the execution lanes, aggregate outcome metrics, and score them against a rubric",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			suite, err := eval.LoadSuite(suitePath)
 			if err != nil {
@@ -64,11 +66,35 @@ func evalCmd() *cobra.Command {
 						r.Executor, r.ScenarioID, r.Attempt, r.OK, r.Steps, r.DurationSec)
 				},
 			}
+			// NOT_RUN, never "0 failures": an unhealthy executor writes a
+			// zeroed textfile and exits 3 — distinct from a failing suite.
+			if verdict, reason := eval.PreFlight(cmd.Context(), suite, runner.Executors); verdict != eval.VerdictOK {
+				fmt.Fprintf(cmd.ErrOrStderr(), "verdict: %s (%s)\n", verdict, reason)
+				if promTextfile != "" {
+					if err := eval.WriteNightlyTextfile(promTextfile, verdict, eval.SuiteMetrics{}, nil); err != nil {
+						return err
+					}
+				}
+				return errNotRun
+			}
 			records, err := runner.RunSuite(cmd.Context(), suite)
 			if err != nil {
+				// The suite crashed mid-run: still a NOT_RUN-class verdict
+				// for the gauges (partial counts never look like a clean
+				// run), while the error itself propagates as exit 1.
+				if promTextfile != "" {
+					if werr := eval.WriteNightlyTextfile(promTextfile, eval.VerdictNotRun, eval.Aggregate(records), records); werr != nil {
+						return werr
+					}
+				}
 				return err
 			}
 			metrics := eval.Aggregate(records)
+			if promTextfile != "" {
+				if err := eval.WriteNightlyTextfile(promTextfile, eval.VerdictOK, metrics, records); err != nil {
+					return err
+				}
+			}
 			var rubricResult *eval.RubricResult
 			if rubric != nil {
 				res := rubric.Score(metrics.Snapshot())
@@ -106,6 +132,11 @@ func evalCmd() *cobra.Command {
 	cmd.Flags().StringVar(&omniParserURL, "omniparser", "", "OmniParser service base URL (grounding for the browser-use-fusion executor)")
 	cmd.Flags().Float64Var(&fusionThreshold, "fusion-threshold", 0, "fusion grounding confidence threshold (0 = package default 0.35)")
 	cmd.Flags().IntVar(&repeatOverride, "repeat", 0, "override every scenario's repeat count (flake measurement)")
+	cmd.Flags().StringVar(&promTextfile, "prom-textfile", "", "write nightly Prometheus gauges to this path, atomically (verdict, runs, pass@N, allowlist violations); written on every exit path")
 	_ = cmd.MarkFlagRequired("suite")
 	return cmd
 }
+
+// errNotRun is the NOT_RUN verdict as an exit path: exit code 3, so a
+// dead executor is distinguishable from a failing suite (exit 1).
+var errNotRun = errors.New("eval: suite not run (executor unhealthy)")

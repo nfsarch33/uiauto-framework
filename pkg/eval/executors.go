@@ -21,6 +21,15 @@ type BrowserUseExecutor struct {
 
 func (e *BrowserUseExecutor) Name() string { return "browser-use" }
 
+// Healthy probes the executor service so a nightly run can be gated to
+// NOT_RUN instead of recording a down lane as zero failures.
+func (e *BrowserUseExecutor) Healthy(ctx context.Context) error {
+	if _, err := browseruse.New(e.ServiceURL).Health(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (e *BrowserUseExecutor) Run(ctx context.Context, sc Scenario, attempt int) RunRecord {
 	rec := RunRecord{ScenarioID: sc.ID, Attempt: attempt}
 	started := time.Now()
@@ -65,6 +74,15 @@ type LayaDecideExecutor struct {
 }
 
 func (e *LayaDecideExecutor) Name() string { return "laya-decide" }
+
+// Healthy probes the decision service (same gate contract as the
+// browser-use lane).
+func (e *LayaDecideExecutor) Healthy(ctx context.Context) error {
+	if _, err := laya.New(e.ServiceURL).Health(ctx); err != nil {
+		return err
+	}
+	return nil
+}
 
 func (e *LayaDecideExecutor) Run(ctx context.Context, sc Scenario, attempt int) RunRecord {
 	rec := RunRecord{ScenarioID: sc.ID, Attempt: attempt}
