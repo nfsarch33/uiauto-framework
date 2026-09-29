@@ -41,6 +41,10 @@ func (f *fusionAdapter) Run(ctx context.Context, sc Scenario, attempt int) RunRe
 // executor (the CLI scan and the runner map key both read it).
 const FusionExecutorName = "browser-use-fusion"
 
+// FusionDefaultThreshold re-exports the package default so the CLI's
+// flag help (and any future gates) read ONE number, not a copy.
+const FusionDefaultThreshold = fusion.DefaultConfidenceThreshold
+
 // NewFusionExecutor returns the fusion executor registered under
 // FusionExecutorName for eval suites.
 func NewFusionExecutor(browserUseURL, omniParserURL, chromeDebug string, threshold float64) Executor {

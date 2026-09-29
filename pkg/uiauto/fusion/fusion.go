@@ -76,6 +76,29 @@ type Executor struct {
 	// Parse overrides the OmniParser call (tests inject a fake; the
 	// default calls the service over HTTP).
 	Parse func(ctx context.Context, screen []byte) ([]omniparser.UIElement, error)
+	// attach overrides the CDP agent construction inside capture (tests
+	// inject a fake agent; the default attaches the shared debug session
+	// or launches a dedicated headless Chrome).
+	attach func() (cdpAgent, error)
+}
+
+// cdpAgent is the slice of the browser-agent surface capture needs; the
+// interface exists so the ctx re-checks between attach, Navigate and the
+// screenshot are testable against a fake.
+type cdpAgent interface {
+	Navigate(url string) error
+	CaptureScreenshot() ([]byte, error)
+	Close()
+}
+
+func (e *Executor) attachAgent() (cdpAgent, error) {
+	if e.attach != nil {
+		return e.attach()
+	}
+	if e.ChromeDebug != "" {
+		return uiauto.NewBrowserAgentWithRemote(e.ChromeDebug)
+	}
+	return uiauto.NewBrowserAgentWithChromePath(uiauto.ResolveChromePath(), true)
 }
 
 // Name identifies the executor in eval suites.
@@ -183,13 +206,7 @@ func (e *Executor) capture(ctx context.Context, url string) ([]byte, error) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		var agent *uiauto.BrowserAgent
-		var err error
-		if e.ChromeDebug != "" {
-			agent, err = uiauto.NewBrowserAgentWithRemote(e.ChromeDebug)
-		} else {
-			agent, err = uiauto.NewBrowserAgentWithChromePath(uiauto.ResolveChromePath(), true)
-		}
+		agent, err := e.attachAgent()
 		if err != nil {
 			done <- result{nil, err}
 			return

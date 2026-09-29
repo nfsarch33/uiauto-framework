@@ -34,27 +34,39 @@ page ─▶ CDP screenshot (ctx-aware) ─▶ OmniParser V2 ─▶ []Candidate{l
 
 - **Candidate set**: OmniParser's `elements[]` filtered to
   `interactable`, mapped to `{id, type, text, bbox, confidence}`,
-  ordered by confidence. The candidate list is bounded (top 25) and
-  rendered into the task as a compact numbered list with viewport
+  ordered by confidence, by `Executor.Ground(ctx, screen)
+  ([]Candidate, Outcome, error)`. The candidate list is bounded (top 25)
+  and rendered into the task as a compact numbered list with viewport
   coordinates — the model can quote `"the element numbered 3"` and the
   lane can also resolve a candidate to a click point later.
 - **DOM fallback**: if the OmniParser service is unreachable, returns
   zero interactable elements, or every candidate is under the confidence
   threshold (default 0.35, configurable), the executor runs the plain
   task with no hints. Fallback is a first-class outcome, recorded in the
-  run record (`grounding: "fallback"`), never an error.
+  run record as `grounding_reason: <Outcome>` (the constants in the
+  taxonomy below), never an error.
 - **Decision seam**: the typed-decision service remains where calibrated
   action selection happens (checkout-style pages); the fusion lane uses
   it unchanged. This spike does not alter decision routing.
 
-## Failure taxonomy
+## Outcome taxonomy
 
-| Class | Signal | Handling |
+The executor's Outcome constants, exactly as the code defines them (each
+is a `grounding_reason` value):
+
+| Outcome | Signal | Handling |
 |---|---|---|
+| `grounded` | candidates cleared the threshold | task enriched with the hint block; `enrichment_bytes` records the rendered length |
 | `capture_failed` | screenshot capture error / ctx deadline | DOM fallback; grounding_error recorded |
 | `grounding_unavailable` | OmniParser HTTP error / timeout | DOM fallback; grounding_error recorded |
 | `grounding_empty` | 0 interactable elements | DOM fallback; record |
 | `grounding_low_confidence` | best candidate < threshold | DOM fallback; record |
+
+## Observational classes (NOT executor outcomes — never appear as
+`grounding_reason`; the eval table shows them as run shapes)
+
+| Class | Signal | Where it shows |
+|---|---|---|
 | `hint_ignored` | grounded run, model does not use the candidates | visible as plain-lane step counts in the eval table |
 | `wrong_element` | model acts on a non-candidate | steps succeed/fail as the plain lane (not emitted as a report field in this spike) |
 | `lane_failure` | browser-use run errors | existing lane error contract (`ok=false` + errors) |

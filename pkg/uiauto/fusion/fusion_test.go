@@ -227,3 +227,39 @@ func TestRunLaneFailureIsAnError(t *testing.T) {
 		t.Fatalf("lane failure must not be OK: %+v", rec)
 	}
 }
+
+// Run-level: enrichment_bytes must equal the length of the hint block
+// Enrich actually rendered for THIS candidate set — a measured fact, not
+// an estimate. Mutant this kills: enrichment_bytes hardcoded or computed
+// from anything but len(enriched)-len(task) — the equality breaks.
+func TestRunEnrichmentBytesMatchesRenderedBlock(t *testing.T) {
+	lane := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true,"final_result":"done","steps":1,"errors":[],"urls":["https://a.test/"],"urls_visited":1}`))
+	}))
+	defer lane.Close()
+	scenario := Scenario{ID: "s", Task: "Book the cheaper flight", URL: "https://a.test/"}
+	e := &Executor{
+		BrowserUseURL: lane.URL,
+		Capture:       func(context.Context, string) ([]byte, error) { return []byte("png"), nil },
+		Parse: func(_ context.Context, _ []byte) ([]omniparser.UIElement, error) {
+			return els(
+				el(1, "Continue button", 0.9, 10, 20, 80, 24),
+				el(2, "Total price", 0.7, 10, 50, 120, 18),
+			), nil
+		},
+	}
+	rec := e.Run(context.Background(), scenario, 1)
+	if rec.Evidence["grounding_reason"] != string(Grounded) {
+		t.Fatalf("grounding_reason=%v, want grounded", rec.Evidence["grounding_reason"])
+	}
+	// The expected value is derived by rendering the SAME block Enrich
+	// produced — pinning the evidence field to the rendered artifact.
+	candidates, outcome, err := e.Ground(context.Background(), []byte("png"))
+	if err != nil || outcome != Grounded {
+		t.Fatalf("grounding failed: outcome=%s err=%v", outcome, err)
+	}
+	want := len(Enrich(scenario.Task, candidates)) - len(scenario.Task)
+	if got, _ := rec.Evidence["enrichment_bytes"].(int); got != want || want <= 0 {
+		t.Fatalf("enrichment_bytes=%v, want the rendered block length %d", rec.Evidence["enrichment_bytes"], want)
+	}
+}

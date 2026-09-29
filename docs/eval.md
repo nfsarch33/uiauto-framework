@@ -132,7 +132,10 @@ stub, fixture pages), `ui-agent eval` report at the run:
 | browser-use-fusion | 1/1 | 2 | 6.10 s | grounded, 2 candidates | enrichment_bytes in evidence (measured per run) |
 
 Reading, honestly: on a page with a clean DOM the grounding adds its own
-cost (screenshot capture + OmniParser round trip, here ~5.3 s wall) and
+cost (screenshot capture + OmniParser round trip — the 5.3 s figure is
+the DIFFERENCE of two single runs, 6.10 s fusion minus 0.80 s plain, not
+a per-phase measurement; per-phase timing would need instrumented
+capture/parse spans) and
 saves no steps — the plain lane's DOM state was already sufficient. The
 fusion lane's case is the other class of page (canvas-heavy, obfuscated
 or overlay DOMs where DOM state misleads); that comparison needs a
