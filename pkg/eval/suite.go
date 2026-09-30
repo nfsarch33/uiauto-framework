@@ -47,11 +47,16 @@ type Scenario struct {
 	// FinalContains: browser-use success additionally requires the final
 	// result to contain this substring.
 	FinalContains string `yaml:"final_contains"`
-	// AllowedHosts, when set, fences the run: every distinct host in the
-	// lane's page history must be on the list (exact match after
-	// hostname normalisation). Enforcement is DETECTION AFTER
-	// NAVIGATION — the executor has already acted; the runner fails the
-	// run and names the host. It does not prevent the navigation.
+	// AllowedHosts, when set, fences the run: every URL host in the
+	// lane's page history must be on the list. Two entry shapes: a
+	// port-scoped entry "host:port" matches that host AND port only; a
+	// BARE entry "host" matches only URLs with NO explicit port — since
+	// the port-binding change this is stricter than a wildcard over the
+	// host's ports: "fixtures" does not admit http://fixtures:8018 and
+	// "example.com" does not admit https://example.com:443/. Enforcement
+	// is DETECTION AFTER NAVIGATION — the executor has already acted;
+	// the runner fails the run and names the host. It does not prevent
+	// the navigation.
 	AllowedHosts []string `yaml:"allowed_hosts"`
 }
 

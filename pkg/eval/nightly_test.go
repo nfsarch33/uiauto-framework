@@ -265,11 +265,22 @@ func TestAllowlistPortScopedEntryBindsPort(t *testing.T) {
 		t.Fatalf("the scoped host itself must pass: %v", rec.Errors)
 	}
 
-	// Bare-hostname entries keep hostname-only semantics (no port in
-	// the URL, no port in the entry).
+	// Bare-hostname entries match ONLY unported URLs: a bare entry
+	// never admits the same host on an explicit port. Mutant this
+	// kills: the matcher ignoring the port for bare entries (the old
+	// any-port hostname semantics).
 	rec = RunRecord{OK: true, URLs: []string{"https://example.com/"}}
 	applyHostAllowlist(&rec, []string{"example.com"})
 	if !rec.OK {
-		t.Fatalf("bare entry must keep hostname semantics: %v", rec.Errors)
+		t.Fatalf("bare entry must match its unported URL: %v", rec.Errors)
+	}
+
+	rec = RunRecord{OK: true, URLs: []string{"https://example.com:443/x"}}
+	applyHostAllowlist(&rec, []string{"example.com"})
+	if rec.OK {
+		t.Fatal("a bare entry must NOT admit the same host on an explicit port (example.com:443)")
+	}
+	if len(rec.Errors) != 1 || !strings.Contains(rec.Errors[0], "example.com:443") {
+		t.Fatalf("errors = %v, want exactly the :443 violation", rec.Errors)
 	}
 }
