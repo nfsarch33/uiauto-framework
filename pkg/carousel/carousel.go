@@ -53,21 +53,49 @@ func Capture(ctx context.Context, html string, width, height int) ([]byte, error
 	if width <= 0 || height <= 0 {
 		return nil, fmt.Errorf("carousel: slide size must be positive, got %dx%d", width, height)
 	}
-	agent, err := uiauto.NewBrowserAgentWithChromePath(uiauto.ResolveChromePath(), true)
-	if err != nil {
-		return nil, fmt.Errorf("carousel: launch headless chrome: %w", err)
+	// The agent APIs take no ctx, so a cancelled caller must not leave a
+	// render running: the work runs under the ctx and the caller sees the
+	// deadline (the same shape as the fusion lane's capture).
+	type result struct {
+		png []byte
+		err error
 	}
-	defer agent.Close()
-	if err := agent.SetViewport(width, height); err != nil {
-		return nil, fmt.Errorf("carousel: viewport %dx%d: %w", width, height, err)
+	done := make(chan result, 1)
+	go func() {
+		agent, err := uiauto.NewBrowserAgentWithChromePath(uiauto.ResolveChromePath(), true)
+		if err != nil {
+			done <- result{nil, err}
+			return
+		}
+		defer agent.Close()
+		if err := ctx.Err(); err != nil {
+			done <- result{nil, err}
+			return
+		}
+		if err := agent.SetViewport(width, height); err != nil {
+			done <- result{nil, fmt.Errorf("carousel: viewport %dx%d: %w", width, height, err)}
+			return
+		}
+		// The slide rides a data: URL: no server, no temp file, no
+		// fixture port — the document IS the input.
+		url := "data:text/html;charset=utf-8;base64," + base64.StdEncoding.EncodeToString([]byte(html))
+		if err := agent.Navigate(url); err != nil {
+			done <- result{nil, fmt.Errorf("carousel: navigate: %w", err)}
+			return
+		}
+		if err := ctx.Err(); err != nil {
+			done <- result{nil, err}
+			return
+		}
+		png, err := agent.CaptureScreenshot()
+		done <- result{png, err}
+	}()
+	select {
+	case r := <-done:
+		return r.png, r.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	// The slide rides a data: URL: no server, no temp file, no fixture
-	// port — the document IS the input.
-	url := "data:text/html;charset=utf-8;base64," + base64.StdEncoding.EncodeToString([]byte(html))
-	if err := agent.Navigate(url); err != nil {
-		return nil, fmt.Errorf("carousel: navigate: %w", err)
-	}
-	return agent.CaptureScreenshot()
 }
 
 // ToJPEG encodes a captured PNG as JPEG at the given quality (1-100).

@@ -214,3 +214,18 @@ func TestGoldenSlide(t *testing.T) {
 		t.Fatalf("golden diff %v exceeds 0.01 tolerance — rendering changed (regenerate with -update only after reviewing WHY)", diff)
 	}
 }
+
+// A cancelled ctx must surface as the ctx error — cmd.Context()
+// cancellation is never silently ignored (the agent APIs take no ctx,
+// so the deadline is honoured at the select and at the re-checks).
+// Mutant this kills: the select-on-ctx.Done deleted — the cancelled
+// call waits out a full agent launch instead of returning.
+func TestCaptureHonoursCancelledCtx(t *testing.T) {
+	requireChrome(t)
+	skipWithoutBrowser(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := Capture(ctx, "<p>x</p>", 10, 10); err == nil {
+		t.Fatal("cancelled ctx must return an error")
+	}
+}
