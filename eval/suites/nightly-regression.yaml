@@ -35,7 +35,7 @@ scenarios:
     url: http://localhost:8018/woo-admin/products.html
     max_steps: 6
     final_contains: "PRODUCTS READ"
-    allowed_hosts: ["localhost"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-published-count
     executor: browser-use
@@ -43,7 +43,7 @@ scenarios:
     url: http://localhost:8018/woo-admin/products.html
     max_steps: 6
     final_contains: "PUBLISHED COUNT 2"
-    allowed_hosts: ["localhost"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-order-view
     executor: browser-use
@@ -51,7 +51,7 @@ scenarios:
     url: http://localhost:8018/woo-admin/order.html
     max_steps: 6
     final_contains: "ORDER PROCESSING"
-    allowed_hosts: ["localhost"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-order-items
     executor: browser-use
@@ -59,7 +59,7 @@ scenarios:
     url: http://localhost:8018/woo-admin/order.html
     max_steps: 6
     final_contains: "ORDER ITEMS READ"
-    allowed_hosts: ["localhost"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-draft-preview
     executor: browser-use
@@ -67,7 +67,7 @@ scenarios:
     url: http://localhost:8018/woo-admin/draft.html
     max_steps: 6
     final_contains: "DRAFT NOT LIVE"
-    allowed_hosts: ["localhost"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-products-to-order
     executor: browser-use
@@ -75,7 +75,7 @@ scenarios:
     url: http://localhost:8018/woo-admin/products.html
     max_steps: 8
     final_contains: "ORDER PROCESSING"
-    allowed_hosts: ["localhost"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: form-flow-task-done
     executor: browser-use
@@ -83,7 +83,7 @@ scenarios:
     url: http://localhost:8018/form-flow/index.html
     max_steps: 6
     final_contains: "FORM FLOW DONE"
-    allowed_hosts: ["localhost"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: checkout-recovery-decide
     executor: laya-decide
