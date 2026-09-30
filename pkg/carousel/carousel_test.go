@@ -216,14 +216,15 @@ func TestGoldenSlide(t *testing.T) {
 	}
 }
 
-// A cancelled ctx must surface as the ctx error — cmd.Context()
-// cancellation is never silently ignored (the agent APIs take no ctx,
-// so the deadline is honoured at the select and at the re-checks).
-// Mutant this kills: the select-on-ctx.Done deleted — the cancelled
-// call waits out a full agent launch instead of returning.
+// A cancelled ctx must surface as context.Canceled — cmd.Context()
+// cancellation is never silently ignored. Capture guards ctx in four
+// places (up-front return, two goroutine re-checks, the select); any
+// ONE deletion survives via the others (defense in depth), so the
+// mutant this names is ALL FOUR removed: the render then runs to
+// completion and returns a nil error, which is not Canceled.
+// No browser is launched on this path (the up-front return fires
+// first), so the test runs everywhere — including CI -short.
 func TestCaptureHonoursCancelledCtx(t *testing.T) {
-	requireChrome(t)
-	skipWithoutBrowser(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := Capture(ctx, "<p>x</p>", 10, 10)
