@@ -53,6 +53,11 @@ func Capture(ctx context.Context, html string, width, height int) ([]byte, error
 	if width <= 0 || height <= 0 {
 		return nil, fmt.Errorf("carousel: slide size must be positive, got %dx%d", width, height)
 	}
+	// Fast path: an already-cancelled caller never launches Chrome at
+	// all — the select below only guards the in-flight window.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	// The agent APIs take no ctx, so a cancelled caller must not leave a
 	// render running: the work runs under the ctx and the caller sees the
 	// deadline (the same shape as the fusion lane's capture).

@@ -3,6 +3,7 @@ package carousel
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"image"
 	"image/color"
@@ -225,7 +226,8 @@ func TestCaptureHonoursCancelledCtx(t *testing.T) {
 	skipWithoutBrowser(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := Capture(ctx, "<p>x</p>", 10, 10); err == nil {
-		t.Fatal("cancelled ctx must return an error")
+	_, err := Capture(ctx, "<p>x</p>", 10, 10)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled (a cancelled caller must get ITS deadline back, not a launch error or success)", err)
 	}
 }
