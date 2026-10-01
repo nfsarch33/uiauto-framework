@@ -201,6 +201,7 @@ func main() {
 	root.AddCommand(demoCmd())
 	root.AddCommand(layaDecideCmd())
 	root.AddCommand(browserUseRunCmd())
+	root.AddCommand(carouselCmd())
 	root.AddCommand(evalCmd())
 
 	if err := root.Execute(); err != nil {
