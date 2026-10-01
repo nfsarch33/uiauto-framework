@@ -67,7 +67,7 @@ func TestApplyHostAllowlistFailsOffListNavigation(t *testing.T) {
 		"http://fixtures:8018/products.html",
 		"https://evil.example/steal",
 	}}
-	applyHostAllowlist(&rec, []string{"fixtures"})
+	applyHostAllowlist(&rec, []string{"fixtures:8018"})
 	// Mutant this kills: the off-list branch no longer sets OK=false —
 	// an otherwise-successful walk off the reservation reports success.
 	if rec.OK {
@@ -86,7 +86,7 @@ func TestApplyHostAllowlistNormalisesHosts(t *testing.T) {
 		"http://FIXTURES.example:8018/a.html",
 		"http://fixtures.example.:8018/b.html",
 	}}
-	applyHostAllowlist(&rec, []string{"Fixtures.Example"})
+	applyHostAllowlist(&rec, []string{"Fixtures.Example:8018"})
 	// Mutant this kills: normaliseHost stops lowercasing or stripping
 	// the trailing dot — case or dot variants become violations.
 	if !rec.OK || len(rec.Errors) != 0 {
@@ -96,7 +96,7 @@ func TestApplyHostAllowlistNormalisesHosts(t *testing.T) {
 
 func TestApplyHostAllowlistFailsClosedWithoutHistory(t *testing.T) {
 	rec := RunRecord{OK: true}
-	applyHostAllowlist(&rec, []string{"fixtures"})
+	applyHostAllowlist(&rec, []string{"fixtures:8018"})
 	// Mutant this kills: the no-history fail-closed branch deleted — an
 	// executor that reports no page history passes an allowlist it has
 	// no evidence for.
@@ -110,7 +110,7 @@ func TestApplyHostAllowlistFailsClosedWithoutHistory(t *testing.T) {
 
 func TestApplyHostAllowlistFailsUnparsableURL(t *testing.T) {
 	rec := RunRecord{OK: true, URLs: []string{"http://%zz/bad"}}
-	applyHostAllowlist(&rec, []string{"fixtures"})
+	applyHostAllowlist(&rec, []string{"fixtures:8018"})
 	if rec.OK {
 		t.Fatal("an unparsable URL must be a violation, not permission")
 	}
@@ -118,7 +118,7 @@ func TestApplyHostAllowlistFailsUnparsableURL(t *testing.T) {
 
 func TestApplyHostAllowlistPassesOnListWalk(t *testing.T) {
 	rec := RunRecord{OK: true, URLs: []string{"http://fixtures:8018/a.html", "http://fixtures:8018/b.html"}}
-	applyHostAllowlist(&rec, []string{"fixtures"})
+	applyHostAllowlist(&rec, []string{"fixtures:8018"})
 	if !rec.OK || len(rec.Errors) != 0 {
 		t.Fatalf("on-list walk must stay ok: %+v", rec)
 	}
@@ -126,7 +126,7 @@ func TestApplyHostAllowlistPassesOnListWalk(t *testing.T) {
 
 func TestRunnerEnforcesScenarioAllowlist(t *testing.T) {
 	s := &Suite{Name: "nightly", Defaults: Defaults{Repeats: 1, TimeoutS: 5}, Scenarios: []Scenario{{
-		ID: "fenced", Executor: "fake", Repeats: 1, AllowedHosts: []string{"fixtures"},
+		ID: "fenced", Executor: "fake", Repeats: 1, AllowedHosts: []string{"fixtures:8018"},
 	}}}
 	ex := &fakeExecutor{
 		name:   "fake",
@@ -241,5 +241,46 @@ func TestNightlySuiteFileLoads(t *testing.T) {
 			t.Errorf("duplicate task (same url+marker): %q", sc.ID)
 		}
 		seen[key] = true
+	}
+}
+
+// A port-scoped allowlist entry binds the port: with
+// allowed_hosts ["localhost:8018"], a visit to localhost on ANY other
+// port is a violation. Mutant this kills: the matcher comparing
+// Hostname() only — every loopback port (the executor's, a stray CDP
+// hop) slips through the fixture allowlist.
+func TestAllowlistPortScopedEntryBindsPort(t *testing.T) {
+	rec := RunRecord{OK: true, URLs: []string{"http://localhost:8018/woo-admin/products.html", "http://localhost:9999/other"}}
+	applyHostAllowlist(&rec, []string{"localhost:8018"})
+	if rec.OK {
+		t.Fatal("localhost:9999 must violate a localhost:8018 allowlist")
+	}
+	if len(rec.Errors) != 1 || !strings.Contains(rec.Errors[0], "localhost:9999") {
+		t.Fatalf("errors = %v, want exactly the :9999 violation", rec.Errors)
+	}
+
+	rec = RunRecord{OK: true, URLs: []string{"http://localhost:8018/a.html"}}
+	applyHostAllowlist(&rec, []string{"localhost:8018"})
+	if !rec.OK {
+		t.Fatalf("the scoped host itself must pass: %v", rec.Errors)
+	}
+
+	// Bare-hostname entries match ONLY unported URLs: a bare entry
+	// never admits the same host on an explicit port. Mutant this
+	// kills: the matcher ignoring the port for bare entries (the old
+	// any-port hostname semantics).
+	rec = RunRecord{OK: true, URLs: []string{"https://example.com/"}}
+	applyHostAllowlist(&rec, []string{"example.com"})
+	if !rec.OK {
+		t.Fatalf("bare entry must match its unported URL: %v", rec.Errors)
+	}
+
+	rec = RunRecord{OK: true, URLs: []string{"https://example.com:443/x"}}
+	applyHostAllowlist(&rec, []string{"example.com"})
+	if rec.OK {
+		t.Fatal("a bare entry must NOT admit the same host on an explicit port (example.com:443)")
+	}
+	if len(rec.Errors) != 1 || !strings.Contains(rec.Errors[0], "example.com:443") {
+		t.Fatalf("errors = %v, want exactly the :443 violation", rec.Errors)
 	}
 }

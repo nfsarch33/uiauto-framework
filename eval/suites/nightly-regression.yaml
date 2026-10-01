@@ -32,62 +32,62 @@ scenarios:
   - id: woo-admin-product-list
     executor: browser-use
     task: "Open the products page, confirm the table lists Aluminium Water Bottle, and end your final message with the phrase: PRODUCTS READ"
-    url: http://fixtures:8018/woo-admin/products.html
+    url: http://localhost:8018/woo-admin/products.html
     max_steps: 6
     final_contains: "PRODUCTS READ"
-    allowed_hosts: ["fixtures"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-published-count
     executor: browser-use
     task: "Open the products page, count how many products have status Published, and end your final message with the phrase: PUBLISHED COUNT 2"
-    url: http://fixtures:8018/woo-admin/products.html
+    url: http://localhost:8018/woo-admin/products.html
     max_steps: 6
     final_contains: "PUBLISHED COUNT 2"
-    allowed_hosts: ["fixtures"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-order-view
     executor: browser-use
     task: "Open the order page, confirm order 1042 is Processing, and end your final message with the phrase: ORDER PROCESSING"
-    url: http://fixtures:8018/woo-admin/order.html
+    url: http://localhost:8018/woo-admin/order.html
     max_steps: 6
     final_contains: "ORDER PROCESSING"
-    allowed_hosts: ["fixtures"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-order-items
     executor: browser-use
     task: "Open the order page, confirm the order contains a Cork Yoga Block, and end your final message with the phrase: ORDER ITEMS READ"
-    url: http://fixtures:8018/woo-admin/order.html
+    url: http://localhost:8018/woo-admin/order.html
     max_steps: 6
     final_contains: "ORDER ITEMS READ"
-    allowed_hosts: ["fixtures"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-draft-preview
     executor: browser-use
     task: "Open the draft preview page, confirm the draft is not visible to customers until published, and end your final message with the phrase: DRAFT NOT LIVE"
-    url: http://fixtures:8018/woo-admin/draft.html
+    url: http://localhost:8018/woo-admin/draft.html
     max_steps: 6
     final_contains: "DRAFT NOT LIVE"
-    allowed_hosts: ["fixtures"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: woo-admin-products-to-order
     executor: browser-use
     task: "Open the products page, follow the link to the order page, confirm the order status, and end your final message with the phrase: ORDER PROCESSING"
-    url: http://fixtures:8018/woo-admin/products.html
+    url: http://localhost:8018/woo-admin/products.html
     max_steps: 8
     final_contains: "ORDER PROCESSING"
-    allowed_hosts: ["fixtures"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: form-flow-task-done
     executor: browser-use
     task: "Open the page, complete the form flow it presents, and end your final message with the phrase: FORM FLOW DONE"
-    url: http://fixtures:8018/form-flow/index.html
+    url: http://localhost:8018/form-flow/index.html
     max_steps: 6
     final_contains: "FORM FLOW DONE"
-    allowed_hosts: ["fixtures"]
+    allowed_hosts: ["localhost:8018"]
 
   - id: checkout-recovery-decide
     executor: laya-decide
-    url: http://fixtures:8018/checkout-recovery/index.html
+    url: http://localhost:8018/checkout-recovery/index.html
     question_set: checkout_recovery
     golden:
       next_action:

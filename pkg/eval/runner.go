@@ -37,6 +37,9 @@ type Runner struct {
 // history is not permission.
 func applyHostAllowlist(rec *RunRecord, allowed []string) {
 	allowedSet := make(map[string]bool, len(allowed))
+	// Port-scoped entries: "host:port" must match the URL's Host
+	// (host AND port). A bare hostname entry stays hostname-only — the
+	// two shapes cover "this fixture server" and "this site".
 	for _, h := range allowed {
 		allowedSet[normaliseHost(h)] = true
 	}
@@ -51,6 +54,9 @@ func applyHostAllowlist(rec *RunRecord, allowed []string) {
 		host := ""
 		if err == nil {
 			host = normaliseHost(parsed.Hostname())
+			if port := parsed.Port(); port != "" {
+				host = host + ":" + port
+			}
 		}
 		if host == "" {
 			rec.OK = false
