@@ -70,31 +70,56 @@ func AllowlistViolations(records []RunRecord) int {
 	return n
 }
 
-// WriteNightlyTextfile emits the nightly gauges in Prometheus text
-// format, atomically (temp file + rename) so a collector never reads a
-// half-written file. The verdict gauge is 1 only for a suite that RAN —
-// a dead executor can never look like a clean run.
+// WriteNightlyTextfile emits the browser-nightly gauges under the
+// historical prefix. See WritePrefixedTextfile.
 func WriteNightlyTextfile(path string, verdict Verdict, m SuiteMetrics, records []RunRecord) error {
+	return WritePrefixedTextfile(path, "uiauto_eval_nightly", verdict, m, records)
+}
+
+// WritePrefixedTextfile emits the suite gauges in Prometheus text
+// format under a caller-chosen prefix, atomically (temp file + rename)
+// so a collector never reads a half-written file. Two nightlies (the
+// browser suite and the laya probation suite) share one textfile
+// directory; without distinct prefixes the collector would see the
+// same series name twice. The verdict gauge is 1 only for a suite that
+// RAN — a dead executor can never look like a clean run. Decision
+// accuracy and mean run latency ride along: they are the probation
+// numbers the weekly review reads.
+func WritePrefixedTextfile(path, prefix string, verdict Verdict, m SuiteMetrics, records []RunRecord) error {
 	verdictValue := 0.0
 	if verdict == VerdictOK {
 		verdictValue = 1
 	}
+	var latencyMs float64
+	if len(records) > 0 {
+		var total float64
+		for _, r := range records {
+			total += r.DurationSec
+		}
+		latencyMs = total / float64(len(records)) * 1000
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# HELP uiauto_eval_nightly_ok The suite's verdict as a number: 1 = ran, 0 = not_run.\n")
-	fmt.Fprintf(&b, "# TYPE uiauto_eval_nightly_ok gauge\n")
-	fmt.Fprintf(&b, "uiauto_eval_nightly_ok %g\n\n", verdictValue)
-	fmt.Fprintf(&b, "# HELP uiauto_eval_nightly_runs Total task runs recorded.\n")
-	fmt.Fprintf(&b, "# TYPE uiauto_eval_nightly_runs gauge\n")
-	fmt.Fprintf(&b, "uiauto_eval_nightly_runs %d\n\n", m.Runs)
-	fmt.Fprintf(&b, "# HELP uiauto_eval_nightly_successful_runs Successful task runs.\n")
-	fmt.Fprintf(&b, "# TYPE uiauto_eval_nightly_successful_runs gauge\n")
-	fmt.Fprintf(&b, "uiauto_eval_nightly_successful_runs %d\n\n", m.SuccessfulRuns)
-	fmt.Fprintf(&b, "# HELP uiauto_eval_nightly_pass_all_repeats Share of scenarios whose every repeat succeeded (pass@N, 0..1).\n")
-	fmt.Fprintf(&b, "# TYPE uiauto_eval_nightly_pass_all_repeats gauge\n")
-	fmt.Fprintf(&b, "uiauto_eval_nightly_pass_all_repeats %g\n\n", m.StrictScenarioRate)
-	fmt.Fprintf(&b, "# HELP uiauto_eval_nightly_allowlist_violations Runs that navigated off the scenario allowlist.\n")
-	fmt.Fprintf(&b, "# TYPE uiauto_eval_nightly_allowlist_violations gauge\n")
-	fmt.Fprintf(&b, "uiauto_eval_nightly_allowlist_violations %d\n", AllowlistViolations(records))
+	fmt.Fprintf(&b, "# HELP %s_ok The suite's verdict as a number: 1 = ran, 0 = not_run.\n", prefix)
+	fmt.Fprintf(&b, "# TYPE %s_ok gauge\n", prefix)
+	fmt.Fprintf(&b, "%s_ok %g\n\n", prefix, verdictValue)
+	fmt.Fprintf(&b, "# HELP %s_runs Total task runs recorded.\n", prefix)
+	fmt.Fprintf(&b, "# TYPE %s_runs gauge\n", prefix)
+	fmt.Fprintf(&b, "%s_runs %d\n\n", prefix, m.Runs)
+	fmt.Fprintf(&b, "# HELP %s_successful_runs Successful task runs.\n", prefix)
+	fmt.Fprintf(&b, "# TYPE %s_successful_runs gauge\n", prefix)
+	fmt.Fprintf(&b, "%s_successful_runs %d\n\n", prefix, m.SuccessfulRuns)
+	fmt.Fprintf(&b, "# HELP %s_pass_all_repeats Share of scenarios whose every repeat succeeded (pass@N, 0..1).\n", prefix)
+	fmt.Fprintf(&b, "# TYPE %s_pass_all_repeats gauge\n", prefix)
+	fmt.Fprintf(&b, "%s_pass_all_repeats %g\n\n", prefix, m.StrictScenarioRate)
+	fmt.Fprintf(&b, "# HELP %s_allowlist_violations Runs that navigated off the scenario allowlist.\n", prefix)
+	fmt.Fprintf(&b, "# TYPE %s_allowlist_violations gauge\n", prefix)
+	fmt.Fprintf(&b, "%s_allowlist_violations %d\n\n", prefix, AllowlistViolations(records))
+	fmt.Fprintf(&b, "# HELP %s_decision_accuracy Graded decide answers that matched golden (0..1; 0 when none graded).\n", prefix)
+	fmt.Fprintf(&b, "# TYPE %s_decision_accuracy gauge\n", prefix)
+	fmt.Fprintf(&b, "%s_decision_accuracy %g\n\n", prefix, m.DecisionAccuracy)
+	fmt.Fprintf(&b, "# HELP %s_run_latency_ms Mean wall-clock duration of a task run, milliseconds.\n", prefix)
+	fmt.Fprintf(&b, "# TYPE %s_run_latency_ms gauge\n", prefix)
+	fmt.Fprintf(&b, "%s_run_latency_ms %.1f\n", prefix, latencyMs)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
 		return err
