@@ -84,8 +84,11 @@ func (e *LayaDecideExecutor) Healthy(ctx context.Context) error {
 	return nil
 }
 
-func (e *LayaDecideExecutor) Run(ctx context.Context, sc Scenario, attempt int) RunRecord {
-	rec := RunRecord{ScenarioID: sc.ID, Attempt: attempt}
+func (e *LayaDecideExecutor) Run(ctx context.Context, sc Scenario, attempt int) (rec RunRecord) {
+	// Named return: the deferred duration write must reach the caller.
+	// A bare `return rec` copies before the defer runs, and laya
+	// durations read as zero (surfaced by the probation latency gauge).
+	rec = RunRecord{ScenarioID: sc.ID, Attempt: attempt}
 	started := time.Now()
 	defer func() { rec.DurationSec = time.Since(started).Seconds() }()
 
