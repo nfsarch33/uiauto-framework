@@ -1,0 +1,32 @@
+# Nightly Laya probation eval: decide tasks over the local fixture
+# pages (the 8018 unit), nothing public. Two discriminators matter for
+# probation: an error page whose correct next action is a retry, and a
+# HEALTHY page whose correct action is to continue — a judge that calls
+# every page an error fails the second task. PreFlight gates the run:
+# a down Laya server is NOT_RUN (exit 3), never "0 failures". The
+# wrapper runs this with --prom-prefix uiauto_eval_laya so the textfile
+# never collides with the browser nightly's series.
+name: laya-nightly
+defaults:
+  repeats: 3
+  timeout_s: 120
+scenarios:
+  - id: checkout-recovery-error-decide
+    executor: laya-decide
+    url: http://localhost:8018/checkout-recovery/index.html
+    question_set: checkout_recovery
+    golden:
+      next_action:
+        label: retry_payment
+      error_visible:
+        true: true
+
+  - id: woo-admin-products-healthy-decide
+    executor: laya-decide
+    url: http://localhost:8018/woo-admin/products.html
+    question_set: checkout_recovery
+    golden:
+      next_action:
+        label: no_error_continue
+      error_visible:
+        true: false

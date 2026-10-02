@@ -284,3 +284,68 @@ func TestAllowlistPortScopedEntryBindsPort(t *testing.T) {
 		t.Fatalf("errors = %v, want exactly the :443 violation", rec.Errors)
 	}
 }
+
+// The laya probation textfile must carry its OWN prefix plus the two
+// probation gauges (accuracy, mean latency). Mutant this kills: the
+// writer ignoring the prefix (series would collide with the browser
+// nightly's in the shared textfile directory).
+func TestPrefixedTextfileOwnsItsPrefixAndProbationGauges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "laya.prom")
+	m := SuiteMetrics{Runs: 2, SuccessfulRuns: 2, DecisionCount: 4, GradedDecisions: 4, CorrectDecisions: 4}
+	m.DecisionAccuracy = 1 // as Aggregate would derive 4/4 graded-correct
+	records := []RunRecord{{DurationSec: 0.5}, {DurationSec: 1.5}}
+	if err := WritePrefixedTextfile(path, "uiauto_eval_laya", VerdictOK, m, records); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, want := range []string{
+		"uiauto_eval_laya_ok 1",
+		"uiauto_eval_laya_decision_accuracy 1",
+		"uiauto_eval_laya_run_latency_ms 1000",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("textfile missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "uiauto_eval_nightly") {
+		t.Fatalf("prefixed textfile must not emit the browser-nightly prefix:\n%s", text)
+	}
+}
+
+// The laya nightly suite itself: every scenario is a decide task on a
+// local fixture page, and the healthy-page discriminator exists (a
+// suite where every golden is an error state cannot catch a judge that
+// cries error). Mutant this kills: the healthy scenario deleted.
+func TestLayaNightlySuiteShape(t *testing.T) {
+	s, err := LoadSuite(filepath.Join("..", "..", "eval", "suites", "laya-nightly.yaml"))
+	if err != nil {
+		t.Fatalf("LoadSuite: %v", err)
+	}
+	executors := map[string]bool{}
+	healthy := false
+	for _, sc := range s.Scenarios {
+		executors[sc.Executor] = true
+		if !strings.HasPrefix(sc.URL, "http://localhost:8018/") {
+			t.Fatalf("scenario %q must target the local fixture server, got %q", sc.ID, sc.URL)
+		}
+		if sc.Golden == nil {
+			t.Fatalf("scenario %q has no golden answers", sc.ID)
+		}
+		if sc.QuestionSet == "" {
+			t.Fatalf("scenario %q has no question_set", sc.ID)
+		}
+		if g, ok := sc.Golden["next_action"]; ok && g.Label == "no_error_continue" {
+			healthy = true
+		}
+	}
+	if len(executors) != 1 || !executors["laya-decide"] {
+		t.Fatalf("laya-nightly must be laya-decide only, got %v", executors)
+	}
+	if !healthy {
+		t.Fatal("suite needs a healthy-page scenario (golden no_error_continue): an all-error suite cannot catch a judge that calls every page an error")
+	}
+}

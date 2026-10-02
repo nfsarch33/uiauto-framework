@@ -20,6 +20,7 @@ func evalCmd() *cobra.Command {
 	var fusionThreshold float64
 	var repeatOverride int
 	var promTextfile string
+	var promPrefix string
 	cmd := &cobra.Command{
 		SilenceUsage: true,
 		Use:          "eval",
@@ -65,7 +66,7 @@ func evalCmd() *cobra.Command {
 			if verdict, reason := eval.PreFlight(cmd.Context(), suite, runner.Executors); verdict != eval.VerdictOK {
 				fmt.Fprintf(cmd.ErrOrStderr(), "verdict: %s (%s)\n", verdict, reason)
 				if promTextfile != "" {
-					if err := eval.WriteNightlyTextfile(promTextfile, verdict, eval.SuiteMetrics{}, nil); err != nil {
+					if err := eval.WritePrefixedTextfile(promTextfile, promPrefix, verdict, eval.SuiteMetrics{}, nil); err != nil {
 						return err
 					}
 				}
@@ -77,7 +78,7 @@ func evalCmd() *cobra.Command {
 				// for the gauges (partial counts never look like a clean
 				// run), while the error itself propagates as exit 1.
 				if promTextfile != "" {
-					if werr := eval.WriteNightlyTextfile(promTextfile, eval.VerdictNotRun, eval.Aggregate(records), records); werr != nil {
+					if werr := eval.WritePrefixedTextfile(promTextfile, promPrefix, eval.VerdictNotRun, eval.Aggregate(records), records); werr != nil {
 						return werr
 					}
 				}
@@ -85,7 +86,7 @@ func evalCmd() *cobra.Command {
 			}
 			metrics := eval.Aggregate(records)
 			if promTextfile != "" {
-				if err := eval.WriteNightlyTextfile(promTextfile, eval.VerdictOK, metrics, records); err != nil {
+				if err := eval.WritePrefixedTextfile(promTextfile, promPrefix, eval.VerdictOK, metrics, records); err != nil {
 					return err
 				}
 			}
@@ -127,6 +128,7 @@ func evalCmd() *cobra.Command {
 	cmd.Flags().Float64Var(&fusionThreshold, "fusion-threshold", 0, fmt.Sprintf("fusion grounding confidence threshold (0 = package default %v)", eval.FusionDefaultThreshold))
 	cmd.Flags().IntVar(&repeatOverride, "repeat", 0, "override every scenario's repeat count (flake measurement)")
 	cmd.Flags().StringVar(&promTextfile, "prom-textfile", "", "write nightly Prometheus gauges to this path, atomically (verdict, runs, pass@N, allowlist violations); written on every exit path")
+	cmd.Flags().StringVar(&promPrefix, "prom-prefix", "uiauto_eval_nightly", "metric name prefix for --prom-textfile; distinct prefixes let two nightlies share one textfile directory without colliding series")
 	_ = cmd.MarkFlagRequired("suite")
 	return cmd
 }
