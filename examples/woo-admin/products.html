@@ -1,6 +1,28 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Products — Store Admin (fixture)</title></head>
+<head>
+  <meta charset="utf-8"><title>Products — Store Admin (fixture)</title>
+  <!-- Structured data the SEO eval lane validates: an ItemList of
+       Product+Offer records, one per catalogue row. Draft-status rows
+       carry no Offer (an unpublished product has no price to a buyer). -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "itemListElement": [
+      {"@type": "ListItem", "position": 1, "item": {
+        "@type": "Product", "name": "Aluminium Water Bottle",
+        "offers": {"@type": "Offer", "price": "29.00", "priceCurrency": "AUD", "availability": "https://schema.org/InStock"}}},
+      {"@type": "ListItem", "position": 2, "item": {
+        "@type": "Product", "name": "Bamboo Desk Tray",
+        "offers": {"@type": "Offer", "price": "19.50", "priceCurrency": "AUD", "availability": "https://schema.org/InStock"}}},
+      {"@type": "ListItem", "position": 3, "item": {
+        "@type": "Product", "name": "Cork Yoga Block",
+        "offers": {"@type": "Offer", "price": "24.00", "priceCurrency": "AUD", "availability": "https://schema.org/InStock"}}}
+    ]
+  }
+  </script>
+</head>
 <body>
   <h1>Products</h1>
   <table>
