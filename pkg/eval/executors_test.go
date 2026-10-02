@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/nfsarch33/uiauto-framework/pkg/uiauto/laya"
 )
@@ -130,5 +131,47 @@ func TestLayaDecideExecutorRunWithInjectedCapture(t *testing.T) {
 	}}
 	if rec := bad.Run(context.Background(), Scenario{ID: "x", QuestionSet: "nope"}, 1); rec.OK {
 		t.Fatalf("bad question set must fail: %+v", rec)
+	}
+}
+
+// The decide duration must reach the caller: Run measures wall time with
+// a deferred write, and a bare `return rec` (an unnamed result) copies
+// the record before that defer runs, so every decide duration reads as
+// zero — exactly what the mean-latency gauge then reports. This test
+// pins the named return against that copy bug.
+func TestLayaDecideDurationReachesCaller(t *testing.T) {
+	svc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/predict":
+			time.Sleep(20 * time.Millisecond) // the latency the record must carry
+			_, _ = w.Write([]byte(`{"answers":{
+				"next_action":{"type":"choice","choice":"retry_payment","probabilities":{"retry_payment":0.9},"confidence":0.9},
+				"error_visible":{"type":"noul","noul":0.9,"confidence":0.9}
+			}}`))
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer svc.Close()
+
+	ex := &LayaDecideExecutor{
+		ServiceURL: svc.URL,
+		Capture: func(_ context.Context, _ Scenario) (laya.State, error) {
+			return laya.State{"title": "Checkout", "visible_text": "Payment failed"}, nil
+		},
+	}
+	sc := Scenario{
+		ID: "checkout", QuestionSet: "checkout_recovery",
+		Golden: map[string]Golden{
+			"next_action":   {Label: "retry_payment"},
+			"error_visible": {True: boolPtr(true)},
+		},
+	}
+	rec := ex.Run(context.Background(), sc, 1)
+	if !rec.OK {
+		t.Fatalf("record not ok: %+v", rec)
+	}
+	if rec.DurationSec < 0.02 {
+		t.Fatalf("decide duration never reached the caller: got %v, want the 20ms service call measured", rec.DurationSec)
 	}
 }
