@@ -1,0 +1,11 @@
+# Fixture Shop (woo-admin)
+
+> A deterministic WooCommerce-style fixture shop for the browser
+> automation and SEO evaluation lanes. Three products, one order, one
+> draft. Served read-only by the fixtures unit on port 8018.
+
+## Pages
+
+- [Products](http://localhost:8018/woo-admin/products.html): the catalogue with Product and Offer structured data
+- [Order 1042](http://localhost:8018/woo-admin/order.html): a single order view used by checkout-recovery flows
+- [Draft](http://localhost:8018/woo-admin/draft.html): an unpublished product draft
