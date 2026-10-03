@@ -106,6 +106,52 @@ func TestApplyHostAllowlistFailsClosedWithoutHistory(t *testing.T) {
 	if !strings.Contains(rec.Errors[0], "no page history") {
 		t.Errorf("errors = %v, want the no-history reason", rec.Errors)
 	}
+	// Mutant this kills: the reason split collapsed back to one string —
+	// triage cannot tell a transport-shaped death from a silent empty
+	// history (the 20261002 nightly paged on the first kind).
+	if !strings.Contains(rec.Errors[0], "with no run errors") {
+		t.Errorf("errors = %v, want the no-run-errors shape named", rec.Errors)
+	}
+}
+
+func TestApplyHostAllowlistNamesTransportShapedNoHistory(t *testing.T) {
+	rec := RunRecord{OK: false, Errors: []string{
+		`browseruse: run: Post "http://127.0.0.1:8091/run": context deadline exceeded`,
+	}}
+	applyHostAllowlist(&rec, []string{"example.com"})
+	// Mutant this kills: the after-errors branch reports the silent
+	// shape — the report blames the executor's death as a scope breach.
+	last := rec.Errors[len(rec.Errors)-1]
+	if !strings.Contains(last, "after run errors") {
+		t.Fatalf("errors = %v, want the after-run-errors shape named", rec.Errors)
+	}
+}
+
+func TestAllowlistNoHistorySplitsTransportFromOffScope(t *testing.T) {
+	transport := RunRecord{Errors: []string{
+		"browseruse: run: deadline exceeded",
+		"allowlist_violation: executor reported no page history after run errors (allowed: [example.com])",
+	}}
+	silent := RunRecord{Errors: []string{
+		"allowlist_violation: executor reported no page history with no run errors (allowed: [example.com])",
+	}}
+	offScope := RunRecord{Errors: []string{
+		`allowlist_violation: visited "evil.example" (allowed: [example.com])`,
+	}}
+	clean := RunRecord{OK: true}
+	records := []RunRecord{transport, silent, offScope, clean}
+	// Mutant this kills: AllowlistNoHistory counts every violation — the
+	// triage gauge can no longer tell an executor death from a scope
+	// breach, which is the whole point of the split.
+	if got := AllowlistViolations(records); got != 3 {
+		t.Fatalf("AllowlistViolations = %d, want 3", got)
+	}
+	// Mutant this kills: the matcher loosens back to "no page history" —
+	// the silent shape moves the transport gauge and triage reads it as
+	// an executor death, the exact confusion this split exists to remove.
+	if got := AllowlistNoHistory(records); got != 1 {
+		t.Fatalf("AllowlistNoHistory = %d, want 1 (transport-shaped only; silent and off-scope must not count)", got)
+	}
 }
 
 func TestApplyHostAllowlistFailsUnparsableURL(t *testing.T) {
@@ -201,6 +247,8 @@ func TestWriteNightlyTextfileCountsViolationsAndPassAtN(t *testing.T) {
 		"uiauto_eval_nightly_runs 3",
 		"uiauto_eval_nightly_successful_runs 2",
 		"uiauto_eval_nightly_allowlist_violations 1",
+		// off-scope visit, so the transport-shaped split gauge reads 0
+		"uiauto_eval_nightly_allowlist_no_history 0",
 		"Share of scenarios whose every repeat succeeded",
 	} {
 		// Mutant this kills: any of the gauges dropped or miscounted,
