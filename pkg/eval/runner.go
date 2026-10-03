@@ -45,8 +45,16 @@ func applyHostAllowlist(rec *RunRecord, allowed []string) {
 	}
 	if len(allowedSet) > 0 && len(rec.URLs) == 0 {
 		rec.OK = false
+		// Fail-closed stands (uiauto #50); the reason distinguishes a run
+		// that already failed (typically a transport deadline, like the
+		// 20261002 nightly) from one that reported no history silently —
+		// the second is the scarier shape.
+		shape := "with no run errors"
+		if len(rec.Errors) > 0 {
+			shape = "after run errors"
+		}
 		rec.Errors = append(rec.Errors,
-			fmt.Sprintf("allowlist_violation: executor reported no page history (allowed: %v)", allowed))
+			fmt.Sprintf("allowlist_violation: executor reported no page history %s (allowed: %v)", shape, allowed))
 		return
 	}
 	for _, u := range rec.URLs {
