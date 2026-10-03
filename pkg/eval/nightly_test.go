@@ -132,19 +132,25 @@ func TestAllowlistNoHistorySplitsTransportFromOffScope(t *testing.T) {
 		"browseruse: run: deadline exceeded",
 		"allowlist_violation: executor reported no page history after run errors (allowed: [example.com])",
 	}}
+	silent := RunRecord{Errors: []string{
+		"allowlist_violation: executor reported no page history with no run errors (allowed: [example.com])",
+	}}
 	offScope := RunRecord{Errors: []string{
 		`allowlist_violation: visited "evil.example" (allowed: [example.com])`,
 	}}
 	clean := RunRecord{OK: true}
-	records := []RunRecord{transport, offScope, clean}
+	records := []RunRecord{transport, silent, offScope, clean}
 	// Mutant this kills: AllowlistNoHistory counts every violation — the
 	// triage gauge can no longer tell an executor death from a scope
 	// breach, which is the whole point of the split.
-	if got := AllowlistViolations(records); got != 2 {
-		t.Fatalf("AllowlistViolations = %d, want 2", got)
+	if got := AllowlistViolations(records); got != 3 {
+		t.Fatalf("AllowlistViolations = %d, want 3", got)
 	}
+	// Mutant this kills: the matcher loosens back to "no page history" —
+	// the silent shape moves the transport gauge and triage reads it as
+	// an executor death, the exact confusion this split exists to remove.
 	if got := AllowlistNoHistory(records); got != 1 {
-		t.Fatalf("AllowlistNoHistory = %d, want 1 (the transport-shaped one only)", got)
+		t.Fatalf("AllowlistNoHistory = %d, want 1 (transport-shaped only; silent and off-scope must not count)", got)
 	}
 }
 
