@@ -61,10 +61,8 @@ class Sidecar:
             raise RuntimeError("no task started")
         obs, reward, terminated, truncated, _ = self.env.step(action)
         done = bool(terminated or truncated)
-        if done:
-            # The episode is over; keep the page until /close so a late
-            # observation is still readable, then reset on next /start.
-            pass
+        # The finished page stays up until /close frees it; the next
+        # /start resets the environment.
         return {"obs": render_obs(obs), "reward": float(reward), "done": done}
 
     def close(self) -> None:

@@ -1,6 +1,5 @@
-# First rung of the agent-arena ladder (design note:
-# plans/v18920-eval/design-v18920-8-agent-eval-arenas.md in the KB):
-# 20 MiniWoB++ tasks through BrowserGym, programmatic rewards, no judge.
+# First rung of the agent-arena ladder: 20 MiniWoB++ tasks through
+# BrowserGym, programmatic rewards, no judge.
 #
 # Live run (tier-0 LLM through the router, sidecar up):
 #   UA_EVAL_LLM_BASE_URL=... UA_EVAL_LLM_MODEL=... UA_EVAL_LLM_API_KEY=... \

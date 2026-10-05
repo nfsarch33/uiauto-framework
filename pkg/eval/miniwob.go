@@ -13,7 +13,7 @@ import (
 )
 
 // MiniWoB executor: the first rung of the agent-arena ladder
-// (plans/v18920-eval/design-v18920-8-agent-eval-arenas.md). A python
+// (BrowserGym-served tasks with programmatic rewards). A python
 // sidecar owns the BrowserGym environment (browser + programmatic
 // reward); this executor owns the agent loop: observation in, ONE action
 // string out per step, produced by an OpenAI-compatible chat endpoint.

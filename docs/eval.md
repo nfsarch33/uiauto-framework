@@ -146,8 +146,8 @@ live run before quoting any.
 
 ## Arena rung: MiniWoB++ through BrowserGym (browsergym-miniwob)
 
-First rung of the agent-arena ladder (design note
-`plans/v18920-eval/design-v18920-8-agent-eval-arenas.md`, KB): the
+First rung of the agent-arena ladder (BrowserGym-served benchmark tasks
+with programmatic rewards, hardest first deferred): the
 `browsergym-miniwob` executor plays BrowserGym tasks served by a python
 sidecar (`eval/miniwob/sidecar.py`) that owns the gym environment and
 its PROGRAMMATIC rewards — no judge model anywhere. The agent is an
