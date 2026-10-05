@@ -1,0 +1,214 @@
+package eval
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+)
+
+// miniwobStubSidecar is the deterministic stand-in for the BrowserGym
+// sidecar: it serves /healthz, /start, /step and /close, and hands out
+// scripted step replies.
+type miniwobStubSidecar struct {
+	server    *httptest.Server
+	started   atomic.Int32
+	closed    atomic.Int32
+	steps     atomic.Int32
+	stepReply func(call int) map[string]any
+	startCode atomic.Int32
+}
+
+func newMiniwobStub(t *testing.T, stepReply func(call int) map[string]any) *miniwobStubSidecar {
+	t.Helper()
+	s := &miniwobStubSidecar{stepReply: stepReply}
+	s.startCode.Store(200)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) {
+		s.started.Add(1)
+		if s.startCode.Load() != 200 {
+			w.WriteHeader(int(s.startCode.Load()))
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "unknown task"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"obs": "GOAL: click the button.\nAXTREE: [button] Ok", "task": "miniwob.click-button"})
+	})
+	mux.HandleFunc("/step", func(w http.ResponseWriter, _ *http.Request) {
+		n := int(s.steps.Add(1))
+		_ = json.NewEncoder(w).Encode(s.stepReply(n))
+	})
+	mux.HandleFunc("/close", func(w http.ResponseWriter, _ *http.Request) {
+		s.closed.Add(1)
+		w.WriteHeader(http.StatusOK)
+	})
+	s.server = httptest.NewServer(mux)
+	t.Cleanup(s.server.Close)
+	return s
+}
+
+// miniwobStubLLM answers every chat call with the given content and
+// token usage, so token accounting is assertable without a model.
+type miniwobStubLLM struct {
+	server   *httptest.Server
+	calls    atomic.Int32
+	content  string
+	promTok  int
+	compTok  int
+	lastAuth atomic.Value // string
+}
+
+func newMiniwobStubLLM(t *testing.T, content string) *miniwobStubLLM {
+	t.Helper()
+	l := &miniwobStubLLM{content: content, promTok: 900, compTok: 120}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		l.calls.Add(1)
+		l.lastAuth.Store(r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{map[string]any{"message": map[string]string{"role": "assistant", "content": l.content}}},
+			"usage":   map[string]int{"prompt_tokens": l.promTok, "completion_tokens": l.compTok},
+		})
+	})
+	l.server = httptest.NewServer(mux)
+	t.Cleanup(l.server.Close)
+	return l
+}
+
+func TestMiniWob_RewardOneIsOKAndCountsTokens(t *testing.T) {
+	gym := newMiniwobStub(t, func(call int) map[string]any {
+		if call == 1 {
+			return map[string]any{"obs": "clicked", "reward": 0, "done": false}
+		}
+		return map[string]any{"obs": "done", "reward": 1, "done": true}
+	})
+	llm := newMiniwobStubLLM(t, "thinking...\n</think>\nclick('e3')")
+	ex := &MiniWobExecutor{
+		GymURL: gym.server.URL,
+		LLM:    MiniWobLLMConfig{BaseURL: llm.server.URL, Model: "stub"},
+	}
+	rec := ex.Run(context.Background(), Scenario{ID: "s1", Task: "miniwob.click-button", MaxSteps: 5}, 1)
+	if !rec.OK {
+		t.Fatalf("want OK, errors=%v", rec.Errors)
+	}
+	if rec.Steps != 2 {
+		t.Fatalf("want 2 steps, got %d", rec.Steps)
+	}
+	if got := rec.Evidence["tokens_in"]; got != 1800 {
+		t.Fatalf("want tokens_in 1800 (2 calls x 900), got %v", got)
+	}
+	if got := rec.Evidence["tokens_out"]; got != 240 {
+		t.Fatalf("want tokens_out 240, got %v", got)
+	}
+	if rec.Evidence["reward"] != float64(1) {
+		t.Fatalf("want reward 1, got %v", rec.Evidence["reward"])
+	}
+	if gym.closed.Load() != 1 {
+		t.Fatalf("sidecar close called %d times, want 1", gym.closed.Load())
+	}
+}
+
+func TestMiniWob_StepBudgetIsAFailureWithNamedError(t *testing.T) {
+	gym := newMiniwobStub(t, func(int) map[string]any {
+		return map[string]any{"obs": "still going", "reward": 0, "done": false}
+	})
+	llm := newMiniwobStubLLM(t, "click('e1')")
+	ex := &MiniWobExecutor{GymURL: gym.server.URL, LLM: MiniWobLLMConfig{BaseURL: llm.server.URL, Model: "stub"}}
+	rec := ex.Run(context.Background(), Scenario{ID: "s2", Task: "miniwob.focus-text", MaxSteps: 3}, 1)
+	if rec.OK {
+		t.Fatal("a capped run must not be OK")
+	}
+	if rec.Steps != 3 {
+		t.Fatalf("want 3 steps, got %d", rec.Steps)
+	}
+	if len(rec.Errors) == 0 || rec.Errors[0] == "" {
+		t.Fatalf("want a named budget error, got %v", rec.Errors)
+	}
+	if rec.Evidence["steps_capped"] != true {
+		t.Fatal("steps_capped must be true")
+	}
+}
+
+func TestMiniWob_ModelWithoutActionLineFailsTheRun(t *testing.T) {
+	gym := newMiniwobStub(t, func(int) map[string]any {
+		return map[string]any{"obs": "x", "reward": 0, "done": false}
+	})
+	llm := newMiniwobStubLLM(t, "I would click the button, probably the first one.")
+	ex := &MiniWobExecutor{GymURL: gym.server.URL, LLM: MiniWobLLMConfig{BaseURL: llm.server.URL, Model: "stub"}}
+	rec := ex.Run(context.Background(), Scenario{ID: "s3", Task: "miniwob.click-button"}, 1)
+	if rec.OK {
+		t.Fatal("no action line must fail")
+	}
+	if len(rec.Errors) == 0 {
+		t.Fatal("want named error")
+	}
+}
+
+func TestMiniWob_UnknownTaskIsAnErrorNotAPanic(t *testing.T) {
+	gym := newMiniwobStub(t, func(int) map[string]any { return nil })
+	gym.startCode.Store(400)
+	llm := newMiniwobStubLLM(t, "click('e1')")
+	ex := &MiniWobExecutor{GymURL: gym.server.URL, LLM: MiniWobLLMConfig{BaseURL: llm.server.URL, Model: "stub"}}
+	rec := ex.Run(context.Background(), Scenario{ID: "s4", Task: "miniwob.nope"}, 1)
+	if rec.OK {
+		t.Fatal("unknown task must fail")
+	}
+	if len(rec.Errors) == 0 {
+		t.Fatal("want named error")
+	}
+}
+
+func TestMiniWob_MissingLLMConfigRefuses(t *testing.T) {
+	gym := newMiniwobStub(t, func(int) map[string]any { return nil })
+	ex := &MiniWobExecutor{GymURL: gym.server.URL}
+	rec := ex.Run(context.Background(), Scenario{ID: "s5", Task: "miniwob.click-button"}, 1)
+	if rec.OK || len(rec.Errors) == 0 {
+		t.Fatalf("missing LLM config must fail with a named error, got %+v", rec)
+	}
+	if gym.started.Load() != 0 {
+		t.Fatal("no task may start when the LLM is unconfigured")
+	}
+}
+
+func TestMiniWob_HealthyProbesTheSidecar(t *testing.T) {
+	gym := newMiniwobStub(t, func(int) map[string]any { return nil })
+	ex := &MiniWobExecutor{GymURL: gym.server.URL}
+	if err := ex.Healthy(context.Background()); err != nil {
+		t.Fatalf("healthy sidecar: %v", err)
+	}
+	ex = &MiniWobExecutor{GymURL: "http://127.0.0.1:1"}
+	if err := ex.Healthy(context.Background()); err == nil {
+		t.Fatal("dead sidecar must fail the probe")
+	}
+}
+
+func TestMiniWob_ExecutorRegisteredName(t *testing.T) {
+	ex := &MiniWobExecutor{}
+	if ex.Name() != "browsergym-miniwob" {
+		t.Fatalf("executor name %q must match suite YAML", ex.Name())
+	}
+}
+
+func TestExtractAction_IgnoresProseAndThinkBlocks(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"<think>user wants click</think>\nclick('e12')", "click('e12')"},
+		{"Sure! fill('e5', 'Bob')", "fill('e5', 'Bob')"},
+		{"no action here", ""},
+		{"stop()", "stop()"},
+		{"The answer:\nscroll(0, 300)\nthen more prose", "scroll(0, 300)"},
+	}
+	for _, c := range cases {
+		if got := extractAction(c.in); got != c.want {
+			t.Errorf("extractAction(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

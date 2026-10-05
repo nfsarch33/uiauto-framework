@@ -143,3 +143,32 @@ DOM-hostile fixture set, which the spike's failure taxonomy names
 (`hint_ignored`, `wrong_element`) and the suite is the instrument for.
 Token counts are not meaningful under a stubbed model; measure them in a
 live run before quoting any.
+
+## Arena rung: MiniWoB++ through BrowserGym (browsergym-miniwob)
+
+First rung of the agent-arena ladder (design note
+`plans/v18920-eval/design-v18920-8-agent-eval-arenas.md`, KB): the
+`browsergym-miniwob` executor plays BrowserGym tasks served by a python
+sidecar (`eval/miniwob/sidecar.py`) that owns the gym environment and
+its PROGRAMMATIC rewards — no judge model anywhere. The agent is an
+OpenAI-compatible chat endpoint (observation in, one BrowserGym bid
+action string out per step); tokens per task land in the run evidence.
+
+```sh
+# sidecar (own terminal or a unit):
+pip install "browsergym[miniwob]" && playwright install chromium
+python3 eval/miniwob/sidecar.py --port 8093
+
+# 20-task live run; the LLM endpoint arrives by env, never by flag:
+UA_EVAL_LLM_BASE_URL=http://llm-gateway:8000 \
+UA_EVAL_LLM_MODEL=qwen3.8-27b \
+UA_EVAL_LLM_API_KEY=... \
+  ui-agent eval --suite eval/suites/miniwob20.yaml --gym http://127.0.0.1:8093
+```
+
+`UA_EVAL_LLM_API_KEY_ENV` renames the key variable (default
+`UA_EVAL_LLM_API_KEY`); `UA_EVAL_LLM_AGENT_HEADER` optionally tags calls
+with a caller name for gateway-side attribution. In CI the executor is
+covered by httptest stubs (sidecar + LLM), so the gate stays green
+without a browser; the live pass-rate and tokens-per-task numbers come
+from a real run and are quoted from its report, not from stubs.
