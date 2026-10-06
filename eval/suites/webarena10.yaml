@@ -7,7 +7,9 @@
 #   ui-agent eval --suite eval/suites/webarena10.yaml --gym-webarena http://127.0.0.1:8094
 #
 # Sites: shopping_admin only (site stack census deferred the >42 GiB
-# images); every scenario id names the WebArena task it runs.
+# images); every scenario runs a registered WebArena-Lite task (gym ids
+# are the ORIGINAL WebArena indices — config.TASK_IDS, resolved by
+# old_task_id, NOT the raw json's list-position task_id field).
 name: webarena10-rung
 defaults:
   executor: browsergym-webarena
@@ -15,13 +17,13 @@ defaults:
   timeout_s: 300
   max_steps: 30
 scenarios:
-  - {executor: browsergym-webarena, id: wa-lite-top-sellers,        task: webarenalite.0}
-  - {executor: browsergym-webarena, id: wa-lite-reviews-count,      task: webarenalite.2}
-  - {executor: browsergym-webarena, id: wa-lite-top-search-terms,   task: webarenalite.8}
-  - {executor: browsergym-webarena, id: wa-lite-fifth-most-orders,  task: webarenalite.13}
-  - {executor: browsergym-webarena, id: wa-lite-pending-reviews,    task: webarenalite.17}
-  - {executor: browsergym-webarena, id: wa-lite-invoice-total,      task: webarenalite.21}
-  - {executor: browsergym-webarena, id: wa-lite-monthly-orders,     task: webarenalite.26}
-  - {executor: browsergym-webarena, id: wa-lite-dissatisfied,       task: webarenalite.27}
-  - {executor: browsergym-webarena, id: wa-lite-product-likes,      task: webarenalite.30}
-  - {executor: browsergym-webarena, id: wa-lite-brand-frequency,    task: webarenalite.32}
+  - {executor: browsergym-webarena, id: wa-lite-top-sellers,        task: webarenalite.4}
+  - {executor: browsergym-webarena, id: wa-lite-reviews-count,      task: webarenalite.15}
+  - {executor: browsergym-webarena, id: wa-lite-top-search-terms,   task: webarenalite.43}
+  - {executor: browsergym-webarena, id: wa-lite-fifth-most-orders,  task: webarenalite.65}
+  - {executor: browsergym-webarena, id: wa-lite-pending-reviews,    task: webarenalite.77}
+  - {executor: browsergym-webarena, id: wa-lite-invoice-total,      task: webarenalite.95}
+  - {executor: browsergym-webarena, id: wa-lite-monthly-orders,     task: webarenalite.109}
+  - {executor: browsergym-webarena, id: wa-lite-dissatisfied,       task: webarenalite.115}
+  - {executor: browsergym-webarena, id: wa-lite-product-likes,      task: webarenalite.123}
+  - {executor: browsergym-webarena, id: wa-lite-brand-frequency,    task: webarenalite.127}
