@@ -3,8 +3,10 @@ package eval
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -61,6 +63,7 @@ type miniwobStubLLM struct {
 	promTok  int
 	compTok  int
 	lastAuth atomic.Value // string
+	lastSys  atomic.Value // string: system prompt of the latest call
 }
 
 func newMiniwobStubLLM(t *testing.T, content string) *miniwobStubLLM {
@@ -70,6 +73,13 @@ func newMiniwobStubLLM(t *testing.T, content string) *miniwobStubLLM {
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		l.calls.Add(1)
 		l.lastAuth.Store(r.Header.Get("Authorization"))
+		var body struct {
+			Messages []chatMessage `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if len(body.Messages) > 0 {
+			l.lastSys.Store(body.Messages[0].Content)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []any{map[string]any{"message": map[string]string{"role": "assistant", "content": l.content}}},
@@ -234,10 +244,61 @@ func TestExtractAction_IgnoresProseAndThinkBlocks(t *testing.T) {
 		// Leftmost call wins: a fill whose TEXT looks like a call is a
 		// fill, never the inner click.
 		{"fill('e5', 'click(x)')", "fill('e5', 'click(x)')"},
+		// WebArena answer protocol: the reply IS the send_msg_to_user call.
+		{"send_msg_to_user('42 orders')", "send_msg_to_user('42 orders')"},
 	}
 	for _, c := range cases {
 		if got := extractAction(c.in); got != c.want {
 			t.Errorf("extractAction(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// The history must stay bounded: every step appends a full observation,
+// so long-horizon arenas overflow the model context without trimming.
+func TestMiniWob_TrimHistoryKeepsGoalAndTail(t *testing.T) {
+	small := make([]chatMessage, 2+1+historyKeepTail)
+	for i := range small {
+		small[i] = chatMessage{Role: "user", Content: fmt.Sprintf("m%d", i)}
+	}
+	small[0] = chatMessage{Role: "system", Content: "sys"}
+	small[1] = chatMessage{Role: "user", Content: "GOAL"}
+	if got := trimHistory(small); len(got) != len(small) {
+		t.Fatalf("history at the bound must pass through, got %d of %d", len(got), len(small))
+	}
+	big := make([]chatMessage, 2+1+historyKeepTail+6)
+	for i := range big {
+		big[i] = chatMessage{Role: "user", Content: fmt.Sprintf("m%d", i)}
+	}
+	big[0] = chatMessage{Role: "system", Content: "sys"}
+	big[1] = chatMessage{Role: "user", Content: "GOAL"}
+	got := trimHistory(big)
+	if len(got) != 2+1+historyKeepTail {
+		t.Fatalf("trimmed length %d, want %d", len(got), 2+1+historyKeepTail)
+	}
+	if got[0].Content != "sys" || got[1].Content != "GOAL" {
+		t.Fatalf("system + goal-bearing first observation must survive, got %q %q", got[0].Content, got[1].Content)
+	}
+	if got[2].Content != historyTrimNote {
+		t.Fatalf("position 2 must be the omission note, got %q", got[2].Content)
+	}
+	if got[len(got)-1].Content != big[len(big)-1].Content {
+		t.Fatal("the most recent message must be the tail verbatim")
+	}
+}
+
+// The prompt override must reach the wire: a webarena-wired executor
+// teaches send_msg_to_user, the default never does.
+func TestMiniWob_SystemPromptOverrideReachesTheWire(t *testing.T) {
+	gym := newMiniwobStub(t, func(int) map[string]any {
+		return map[string]any{"obs": "x", "reward": 0, "done": false}
+	})
+	llm := newMiniwobStubLLM(t, "stop()")
+	ex := &MiniWobExecutor{GymURL: gym.server.URL, SystemPrompt: WebArenaSystemPrompt,
+		LLM: MiniWobLLMConfig{BaseURL: llm.server.URL, Model: "stub"}}
+	_ = ex.Run(context.Background(), Scenario{ID: "wa", Task: "webarenalite.4", MaxSteps: 1}, 1)
+	sys, _ := llm.lastSys.Load().(string)
+	if !strings.Contains(sys, "send_msg_to_user") {
+		t.Fatalf("system prompt on the wire must teach the answer protocol, got %q", sys)
 	}
 }

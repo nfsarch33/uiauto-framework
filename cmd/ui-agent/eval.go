@@ -67,9 +67,11 @@ func evalCmd() *cobra.Command {
 						AgentHeader: os.Getenv("UA_EVAL_LLM_AGENT_HEADER"),
 					}},
 					// Arena rung 2 (WebArena-Lite): the same loop against a
-					// webarena sidecar under its own name and a longer step
-					// budget — WebArena tasks run longer horizons than MiniWoB.
-					"browsergym-webarena": &eval.MiniWobExecutor{GymURL: gymWebarenaURL, ExecutorName: "browsergym-webarena", DefaultCap: 30, LLM: eval.MiniWobLLMConfig{
+					// webarena sidecar under its own name, a longer step
+					// budget (longer horizons than MiniWoB), the answer
+					// protocol prompt (send_msg_to_user) and a longer /step
+					// timeout (dense pages evaluate slowly).
+					"browsergym-webarena": &eval.MiniWobExecutor{GymURL: gymWebarenaURL, ExecutorName: "browsergym-webarena", DefaultCap: 30, SystemPrompt: eval.WebArenaSystemPrompt, StepTimeout: 120 * time.Second, LLM: eval.MiniWobLLMConfig{
 						BaseURL:     os.Getenv("UA_EVAL_LLM_BASE_URL"),
 						Model:       os.Getenv("UA_EVAL_LLM_MODEL"),
 						APIKeyEnv:   envOrDefault("UA_EVAL_LLM_API_KEY_ENV", "UA_EVAL_LLM_API_KEY"),
