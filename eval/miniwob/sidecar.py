@@ -97,7 +97,7 @@ def _flatten_axtree(obj) -> str:
     # When the tree exceeds the observation budget, decorative lines are
     # dropped FIRST and actionable lines always survive — a blind head-
     # truncation used to cut the interactive tail of dense trees, which
-    # is exactly where the task's buttons lived (r26 failure taxonomy:
+    # is exactly where the task's buttons lived (earlier failure taxonomy:
     # "no extractable action line" on truncation-heavy axtrees).
     lines: list[tuple[str, bool]] = []  # (text, actionable)
 
@@ -129,10 +129,14 @@ def _flatten_axtree(obj) -> str:
         return text
     # Over budget: drop DECORATIVE lines (no bid) from the end, in
     # place, until it fits — actionable lines keep their tree order and
-    # always survive; only the ordering of what remains is preserved.
+    # always survive. The size is kept RUNNING (the dropped line plus
+    # its newline): comparing against the stale pre-loop join would
+    # delete every decorative line in one pass.
+    size = len(text)
     i = len(lines) - 1
-    while i >= 0 and len(text) > MAX_OBS_CHARS:
+    while i >= 0 and size > MAX_OBS_CHARS:
         if not lines[i][1]:
+            size -= len(lines[i][0]) + 1
             del lines[i]
         i -= 1
     text = "\n".join(l for l, _ in lines)
