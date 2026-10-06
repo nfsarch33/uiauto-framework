@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 // aggregated outcome metrics against a rubric. A FAIL verdict exits
 // non-zero so CI can gate on it; the report carries the evidence.
 func evalCmd() *cobra.Command {
-	var suitePath, rubricPath, outDir, browserUseURL, layaURL, chromeDebug, omniParserURL string
+	var suitePath, rubricPath, outDir, browserUseURL, layaURL, chromeDebug, omniParserURL, gymURL string
 	var fusionThreshold float64
 	var repeatOverride int
 	var promTextfile string
@@ -56,6 +57,15 @@ func evalCmd() *cobra.Command {
 					"browser-use":           &eval.BrowserUseExecutor{ServiceURL: browserUseURL},
 					eval.FusionExecutorName: eval.NewFusionExecutor(browserUseURL, omniParserURL, chromeDebug, fusionThreshold),
 					"laya-decide":           &eval.LayaDecideExecutor{ServiceURL: layaURL, ChromeDebug: chromeDebug},
+					// BrowserGym arena rung (MiniWoB++ first): the sidecar owns
+					// the gym, the LLM endpoint comes from the environment so
+					// nothing host-specific is baked into the binary.
+					"browsergym-miniwob": &eval.MiniWobExecutor{GymURL: gymURL, LLM: eval.MiniWobLLMConfig{
+						BaseURL:     os.Getenv("UA_EVAL_LLM_BASE_URL"),
+						Model:       os.Getenv("UA_EVAL_LLM_MODEL"),
+						APIKeyEnv:   envOrDefault("UA_EVAL_LLM_API_KEY_ENV", "UA_EVAL_LLM_API_KEY"),
+						AgentHeader: os.Getenv("UA_EVAL_LLM_AGENT_HEADER"),
+					}},
 				},
 				OnRecord: func(r eval.RunRecord) {
 					fmt.Fprintln(cmd.ErrOrStderr(), progressLine(r))
@@ -125,6 +135,7 @@ func evalCmd() *cobra.Command {
 	cmd.Flags().StringVar(&layaURL, "laya", "http://127.0.0.1:8090", "laya decision service base URL")
 	cmd.Flags().StringVar(&chromeDebug, "chrome-debug", "", "attach the shared Chrome CDP session at this debug URL for page capture")
 	cmd.Flags().StringVar(&omniParserURL, "omniparser", "", "OmniParser service base URL (grounding for the browser-use-fusion executor)")
+	cmd.Flags().StringVar(&gymURL, "gym", "http://127.0.0.1:8093", "BrowserGym sidecar base URL (browsergym-miniwob executor)")
 	cmd.Flags().Float64Var(&fusionThreshold, "fusion-threshold", 0, fmt.Sprintf("fusion grounding confidence threshold (0 = package default %v)", eval.FusionDefaultThreshold))
 	cmd.Flags().IntVar(&repeatOverride, "repeat", 0, "override every scenario's repeat count (flake measurement)")
 	cmd.Flags().StringVar(&promTextfile, "prom-textfile", "", "write nightly Prometheus gauges to this path, atomically (verdict, runs, pass@N, allowlist violations); written on every exit path")
@@ -163,3 +174,13 @@ func fusionRefusal(suite *eval.Suite, omniParserURL string) error {
 // errNotRun is the NOT_RUN verdict as an exit path: exit code 3, so a
 // dead executor is distinguishable from a failing suite (exit 1).
 var errNotRun = errors.New("eval: suite not run (executor unhealthy)")
+
+// envOrDefault reads an env var with a default; used for the LLM key
+// indirection so the env var NAME is configurable without the key ever
+// appearing in argv.
+func envOrDefault(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}

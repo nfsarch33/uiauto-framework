@@ -1,0 +1,35 @@
+# First rung of the agent-arena ladder: 20 MiniWoB++ tasks through
+# BrowserGym, programmatic rewards, no judge.
+#
+# Live run (tier-0 LLM through the router, sidecar up):
+#   UA_EVAL_LLM_BASE_URL=... UA_EVAL_LLM_MODEL=... UA_EVAL_LLM_API_KEY=... \
+#   ui-agent eval --suite eval/suites/miniwob20.yaml --gym http://127.0.0.1:8093
+#
+# Verdicts are the gym's own rewards; task = BrowserGym task id.
+name: miniwob20-rung
+defaults:
+  executor: browsergym-miniwob
+  repeats: 1
+  timeout_s: 120
+  max_steps: 15
+scenarios:
+  - {executor: browsergym-miniwob, id: mw-click-button,            task: miniwob.click-button}
+  - {executor: browsergym-miniwob, id: mw-click-dialog,            task: miniwob.click-dialog}
+  - {executor: browsergym-miniwob, id: mw-click-link,              task: miniwob.click-link}
+  - {executor: browsergym-miniwob, id: mw-click-tab,               task: miniwob.click-tab}
+  - {executor: browsergym-miniwob, id: mw-click-option,            task: miniwob.click-option}
+  - {executor: browsergym-miniwob, id: mw-focus-text,              task: miniwob.focus-text}
+  - {executor: browsergym-miniwob, id: mw-focus-text-2,      task: miniwob.focus-text-2}
+  - {executor: browsergym-miniwob, id: mw-enter-text,              task: miniwob.enter-text}
+  - {executor: browsergym-miniwob, id: mw-enter-text-dynamic,      task: miniwob.enter-text-dynamic}
+  - {executor: browsergym-miniwob, id: mw-enter-password,          task: miniwob.enter-password}
+  - {executor: browsergym-miniwob, id: mw-click-checkboxes,        task: miniwob.click-checkboxes}
+  - {executor: browsergym-miniwob, id: mw-click-checkboxes-large,  task: miniwob.click-checkboxes-large}
+  - {executor: browsergym-miniwob, id: mw-click-checkboxes-soft,     task: miniwob.click-checkboxes-soft}
+  - {executor: browsergym-miniwob, id: mw-click-button-sequence,   task: miniwob.click-button-sequence}
+  - {executor: browsergym-miniwob, id: mw-login-user,              task: miniwob.login-user}
+  - {executor: browsergym-miniwob, id: mw-click-shades,            task: miniwob.click-shades}
+  - {executor: browsergym-miniwob, id: mw-click-pie,               task: miniwob.click-pie}
+  - {executor: browsergym-miniwob, id: mw-click-color,             task: miniwob.click-color}
+  - {executor: browsergym-miniwob, id: mw-grid-coordinate,         task: miniwob.grid-coordinate}
+  - {executor: browsergym-miniwob, id: mw-navigate-tree,           task: miniwob.navigate-tree}
