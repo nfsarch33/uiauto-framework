@@ -19,13 +19,13 @@ scenarios:
   - {executor: browsergym-miniwob, id: mw-click-tab,               task: miniwob.click-tab}
   - {executor: browsergym-miniwob, id: mw-click-option,            task: miniwob.click-option}
   - {executor: browsergym-miniwob, id: mw-focus-text,              task: miniwob.focus-text}
-  - {executor: browsergym-miniwob, id: mw-focus-text-dynamic,      task: miniwob.focus-text-2}
+  - {executor: browsergym-miniwob, id: mw-focus-text-2,      task: miniwob.focus-text-2}
   - {executor: browsergym-miniwob, id: mw-enter-text,              task: miniwob.enter-text}
   - {executor: browsergym-miniwob, id: mw-enter-text-dynamic,      task: miniwob.enter-text-dynamic}
   - {executor: browsergym-miniwob, id: mw-enter-password,          task: miniwob.enter-password}
   - {executor: browsergym-miniwob, id: mw-click-checkboxes,        task: miniwob.click-checkboxes}
   - {executor: browsergym-miniwob, id: mw-click-checkboxes-large,  task: miniwob.click-checkboxes-large}
-  - {executor: browsergym-miniwob, id: mw-click-radio-buttons,     task: miniwob.click-checkboxes-soft}
+  - {executor: browsergym-miniwob, id: mw-click-checkboxes-soft,     task: miniwob.click-checkboxes-soft}
   - {executor: browsergym-miniwob, id: mw-click-button-sequence,   task: miniwob.click-button-sequence}
   - {executor: browsergym-miniwob, id: mw-login-user,              task: miniwob.login-user}
   - {executor: browsergym-miniwob, id: mw-click-shades,            task: miniwob.click-shades}

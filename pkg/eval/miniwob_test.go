@@ -205,6 +205,9 @@ func TestExtractAction_IgnoresProseAndThinkBlocks(t *testing.T) {
 		{"no action here", ""},
 		{"stop()", "stop()"},
 		{"The answer:\nscroll(0, 300)\nthen more prose", "scroll(0, 300)"},
+		// Leftmost call wins: a fill whose TEXT looks like a call is a
+		// fill, never the inner click.
+		{"fill('e5', 'click(x)')", "fill('e5', 'click(x)')"},
 	}
 	for _, c := range cases {
 		if got := extractAction(c.in); got != c.want {

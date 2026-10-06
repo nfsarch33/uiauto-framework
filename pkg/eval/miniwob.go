@@ -302,14 +302,19 @@ func extractAction(content string) string {
 	}
 	for _, line := range strings.Split(text, "\n") {
 		low := strings.ToLower(line)
+		// The verb must be called with a paren, not merely mentioned:
+		// "click the button" stays prose, "Sure! fill('e5', 'x')" is an
+		// action. When several verbs appear, the LEFTMOST paren call is
+		// the action — fill('e5', 'click(x)') is a fill whose text
+		// happens to look like a call, never a click.
+		best := -1
 		for _, verb := range []string{"click", "fill", "scroll", "press", "hover", "drag", "move", "goto", "new_tab", "tab_close", "stop", "report"} {
-			// The verb must be called with a paren, not merely mentioned:
-			// "click the button" stays prose, "Sure! fill('e5', 'x')" is an
-			// action. Take from the verb to end of line — a mid-line match
-			// is still one action.
-			if idx := strings.Index(low, verb+"("); idx >= 0 {
-				return strings.TrimSpace(line[idx:])
+			if idx := strings.Index(low, verb+"("); idx >= 0 && (best < 0 || idx < best) {
+				best = idx
 			}
+		}
+		if best >= 0 {
+			return strings.TrimSpace(line[best:])
 		}
 	}
 	return ""
