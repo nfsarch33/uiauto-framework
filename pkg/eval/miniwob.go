@@ -255,7 +255,7 @@ func (e *MiniWobExecutor) systemPrompt() string {
 // ~step 26. Keep the system prompt, the goal-bearing first observation
 // and the most recent turns; the omitted middle collapses to one note.
 const (
-	historyKeepTail = 8          // most recent messages kept verbatim
+	historyKeepTail = 8 // most recent messages kept verbatim
 	historyTrimNote = "[... earlier steps omitted ...]"
 )
 
