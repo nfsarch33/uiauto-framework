@@ -1,0 +1,27 @@
+# Arena rung 2 slice: 10 WebArena-Lite tasks (admin-only site set) through
+# BrowserGym, programmatic rewards, no judge. Task ids index the ORIGINAL
+# WebArena numbering carried by browsergym-webarenalite.
+#
+# Live run (tier-0 LLM through the router, sidecar up, WA_* env set):
+#   UA_EVAL_LLM_BASE_URL=... UA_EVAL_LLM_MODEL=... UA_EVAL_LLM_API_KEY=... \
+#   ui-agent eval --suite eval/suites/webarena10.yaml --gym-webarena http://127.0.0.1:8094
+#
+# Sites: shopping_admin only (site stack census deferred the >42 GiB
+# images); every scenario id names the WebArena task it runs.
+name: webarena10-rung
+defaults:
+  executor: browsergym-webarena
+  repeats: 1
+  timeout_s: 300
+  max_steps: 30
+scenarios:
+  - {executor: browsergym-webarena, id: wa-lite-top-sellers,        task: webarenalite.0}
+  - {executor: browsergym-webarena, id: wa-lite-reviews-count,      task: webarenalite.2}
+  - {executor: browsergym-webarena, id: wa-lite-top-search-terms,   task: webarenalite.8}
+  - {executor: browsergym-webarena, id: wa-lite-fifth-most-orders,  task: webarenalite.13}
+  - {executor: browsergym-webarena, id: wa-lite-pending-reviews,    task: webarenalite.17}
+  - {executor: browsergym-webarena, id: wa-lite-invoice-total,      task: webarenalite.21}
+  - {executor: browsergym-webarena, id: wa-lite-monthly-orders,     task: webarenalite.26}
+  - {executor: browsergym-webarena, id: wa-lite-dissatisfied,       task: webarenalite.27}
+  - {executor: browsergym-webarena, id: wa-lite-product-likes,      task: webarenalite.30}
+  - {executor: browsergym-webarena, id: wa-lite-brand-frequency,    task: webarenalite.32}

@@ -195,6 +195,32 @@ func TestMiniWob_ExecutorRegisteredName(t *testing.T) {
 	}
 }
 
+// The webarena rung reuses this executor under its own name and a longer
+// default cap; the record must carry the override, not the miniwob name.
+func TestMiniWob_WebArenaOverridesNameAndDefaultCap(t *testing.T) {
+	gym := newMiniwobStub(t, func(int) map[string]any {
+		return map[string]any{"obs": "still going", "reward": 0, "done": false}
+	})
+	llm := newMiniwobStubLLM(t, "click('e1')")
+	ex := &MiniWobExecutor{
+		GymURL:       gym.server.URL,
+		ExecutorName: "browsergym-webarena",
+		DefaultCap:   2,
+		LLM:          MiniWobLLMConfig{BaseURL: llm.server.URL, Model: "stub"},
+	}
+	if ex.Name() != "browsergym-webarena" {
+		t.Fatalf("override name ignored: %q", ex.Name())
+	}
+	// No MaxSteps on the scenario: DefaultCap (2), not miniwobDefaultCap.
+	rec := ex.Run(context.Background(), Scenario{ID: "wa1", Task: "webarenalite.0"}, 1)
+	if rec.OK || rec.Steps != 2 {
+		t.Fatalf("DefaultCap ignored: ok=%v steps=%d errors=%v", rec.OK, rec.Steps, rec.Errors)
+	}
+	if rec.Executor != "browsergym-webarena" {
+		t.Fatalf("record executor %q must carry the override", rec.Executor)
+	}
+}
+
 func TestExtractAction_IgnoresProseAndThinkBlocks(t *testing.T) {
 	cases := []struct {
 		in   string

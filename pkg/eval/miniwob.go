@@ -46,6 +46,13 @@ type MiniWobExecutor struct {
 	// Client is injectable for tests; nil uses http.DefaultClient with a
 	// bounded timeout.
 	Client *http.Client
+	// ExecutorName renames the executor in records and PreFlight (empty =
+	// browsergym-miniwob). The loop is arena-agnostic: a second BrowserGym
+	// registry (webarena) reuses this executor under its own name.
+	ExecutorName string
+	// DefaultCap overrides the per-scenario step-budget default (0 =
+	// miniwobDefaultCap). Longer-horizon arenas need a longer cap.
+	DefaultCap int
 }
 
 // MiniWobLLMConfig names an OpenAI-compatible /v1/chat/completions
@@ -58,7 +65,12 @@ type MiniWobLLMConfig struct {
 	AgentHeader string
 }
 
-func (e *MiniWobExecutor) Name() string { return miniwobExecutorName }
+func (e *MiniWobExecutor) Name() string {
+	if e.ExecutorName != "" {
+		return e.ExecutorName
+	}
+	return miniwobExecutorName
+}
 
 // Healthy probes the sidecar so PreFlight can refuse a dead gym before
 // any task starts (NOT_RUN, never zeroed gauges).
@@ -140,6 +152,9 @@ func (e *MiniWobExecutor) Run(ctx context.Context, sc Scenario, attempt int) Run
 	cap := sc.MaxSteps
 	if cap <= 0 {
 		cap = miniwobDefaultCap
+		if e.DefaultCap > 0 {
+			cap = e.DefaultCap
+		}
 	}
 
 	var sr gymStartReply
