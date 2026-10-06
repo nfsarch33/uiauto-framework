@@ -63,13 +63,16 @@ LLM_AGENT_ID = os.environ.get("BU_LLM_AGENT_ID", "browser-use")
 MAX_BODY_BYTES = 1 << 20
 MAX_STEPS_LIMIT = 200
 # The nightly failure class (AgentOutput "Invalid JSON"): the model
-# prefixes prose to the JSON object the library parses, and the
-# correction retry then trips schema errors of its own. The instruction
-# rides the TASK text because browser-use 0.13.10 exposes no
-# system-prompt extension point on Agent().
+# prefixes prose to the JSON object the library parses, and on the
+# correction retry packs the final message into a forbidden `input`
+# parameter on the done action (DoneActionModel rejects extra inputs).
+# The instruction rides the TASK text because browser-use 0.13.10
+# exposes no system-prompt extension point on Agent().
 JSON_ONLY_SUFFIX = (
     "\n\nIMPORTANT: reply with ONLY the raw JSON object your system prompt asks for. "
-    "No prose before or after it, no markdown fences."
+    "No prose before or after it, no markdown fences. When you finish, call the done "
+    "action with your final message as its text parameter — done(text: \"...\") — "
+    "never as an input parameter."
 )
 # Hosts a request may legitimately arrive with: the loopback names used by
 # published-port callers, and this service's compose service/container
