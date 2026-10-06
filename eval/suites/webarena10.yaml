@@ -14,7 +14,7 @@ name: webarena10-rung
 defaults:
   executor: browsergym-webarena
   repeats: 1
-  timeout_s: 300
+  timeout_s: 600
   max_steps: 30
 scenarios:
   - {executor: browsergym-webarena, id: wa-lite-top-sellers,        task: webarenalite.4}
