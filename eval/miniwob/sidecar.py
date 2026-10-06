@@ -92,7 +92,14 @@ def _flatten_axtree(obj) -> str:
     for n in nodes:
         if isinstance(n, dict):
             children.setdefault(n.get("parentId"), []).append(n)
-    lines: list[str] = []
+    # Two classes of line: ACTIONABLE (carries a bid the agent can act
+    # on) and DECORATIVE (StaticText/InlineTextBox/nameless generics).
+    # When the tree exceeds the observation budget, decorative lines are
+    # dropped FIRST and actionable lines always survive — a blind head-
+    # truncation used to cut the interactive tail of dense trees, which
+    # is exactly where the task's buttons lived (r26 failure taxonomy:
+    # "no extractable action line" on truncation-heavy axtrees).
+    lines: list[tuple[str, bool]] = []  # (text, actionable)
 
     def emit(node: dict, depth: int) -> None:
         role = (node.get("role") or {}).get("value", "") or "node"
@@ -109,16 +116,28 @@ def _flatten_axtree(obj) -> str:
                 label += f" value={value!r}"
             if bid:
                 label += f" ({bid})"
-            lines.append("  " * depth + label)
+            lines.append(("  " * depth + label, bool(bid)))
             depth += 1
         for child in children.get(node.get("nodeId"), []):
             emit(child, depth)
 
     for root in children.get(None, []):
         emit(root, 0)
-    text = "\n".join(lines)
+
+    text = "\n".join(l for l, _ in lines)
+    if len(text) <= MAX_OBS_CHARS:
+        return text
+    # Over budget: drop DECORATIVE lines (no bid) from the end, in
+    # place, until it fits — actionable lines keep their tree order and
+    # always survive; only the ordering of what remains is preserved.
+    i = len(lines) - 1
+    while i >= 0 and len(text) > MAX_OBS_CHARS:
+        if not lines[i][1]:
+            del lines[i]
+        i -= 1
+    text = "\n".join(l for l, _ in lines)
     if len(text) > MAX_OBS_CHARS:
-        text = text[:MAX_OBS_CHARS] + "\n...[truncated]"
+        text = text[:MAX_OBS_CHARS] + "\n...[truncated after decorative prune]"
     return text
 
 
