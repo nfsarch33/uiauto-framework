@@ -17,7 +17,7 @@ import (
 // aggregated outcome metrics against a rubric. A FAIL verdict exits
 // non-zero so CI can gate on it; the report carries the evidence.
 func evalCmd() *cobra.Command {
-	var suitePath, rubricPath, outDir, browserUseURL, layaURL, chromeDebug, omniParserURL, gymURL string
+	var suitePath, rubricPath, outDir, browserUseURL, layaURL, chromeDebug, omniParserURL, gymURL, gymWebarenaURL string
 	var fusionThreshold float64
 	var repeatOverride int
 	var promTextfile string
@@ -61,6 +61,17 @@ func evalCmd() *cobra.Command {
 					// the gym, the LLM endpoint comes from the environment so
 					// nothing host-specific is baked into the binary.
 					"browsergym-miniwob": &eval.MiniWobExecutor{GymURL: gymURL, LLM: eval.MiniWobLLMConfig{
+						BaseURL:     os.Getenv("UA_EVAL_LLM_BASE_URL"),
+						Model:       os.Getenv("UA_EVAL_LLM_MODEL"),
+						APIKeyEnv:   envOrDefault("UA_EVAL_LLM_API_KEY_ENV", "UA_EVAL_LLM_API_KEY"),
+						AgentHeader: os.Getenv("UA_EVAL_LLM_AGENT_HEADER"),
+					}},
+					// Arena rung 2 (WebArena-Lite): the same loop against a
+					// webarena sidecar under its own name, a longer step
+					// budget (longer horizons than MiniWoB), the answer
+					// protocol prompt (send_msg_to_user) and a longer /step
+					// timeout (dense pages evaluate slowly).
+					"browsergym-webarena": &eval.MiniWobExecutor{GymURL: gymWebarenaURL, ExecutorName: "browsergym-webarena", DefaultCap: 30, SystemPrompt: eval.WebArenaSystemPrompt, StepTimeout: 120 * time.Second, LLM: eval.MiniWobLLMConfig{
 						BaseURL:     os.Getenv("UA_EVAL_LLM_BASE_URL"),
 						Model:       os.Getenv("UA_EVAL_LLM_MODEL"),
 						APIKeyEnv:   envOrDefault("UA_EVAL_LLM_API_KEY_ENV", "UA_EVAL_LLM_API_KEY"),
@@ -136,6 +147,7 @@ func evalCmd() *cobra.Command {
 	cmd.Flags().StringVar(&chromeDebug, "chrome-debug", "", "attach the shared Chrome CDP session at this debug URL for page capture")
 	cmd.Flags().StringVar(&omniParserURL, "omniparser", "", "OmniParser service base URL (grounding for the browser-use-fusion executor)")
 	cmd.Flags().StringVar(&gymURL, "gym", "http://127.0.0.1:8093", "BrowserGym sidecar base URL (browsergym-miniwob executor)")
+	cmd.Flags().StringVar(&gymWebarenaURL, "gym-webarena", "http://127.0.0.1:8094", "BrowserGym WebArena sidecar base URL (browsergym-webarena executor)")
 	cmd.Flags().Float64Var(&fusionThreshold, "fusion-threshold", 0, fmt.Sprintf("fusion grounding confidence threshold (0 = package default %v)", eval.FusionDefaultThreshold))
 	cmd.Flags().IntVar(&repeatOverride, "repeat", 0, "override every scenario's repeat count (flake measurement)")
 	cmd.Flags().StringVar(&promTextfile, "prom-textfile", "", "write nightly Prometheus gauges to this path, atomically (verdict, runs, pass@N, allowlist violations); written on every exit path")

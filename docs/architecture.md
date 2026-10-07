@@ -22,6 +22,10 @@ flowchart TB
     omniSrv["OmniParser server (Python)"] -.->|HTTP| omni
     gateway["AI Gateway (OpenAI-compatible)"] -.->|HTTPS| smart
     gateway -.->|HTTPS| vlm
+    eval["eval stack: suites, rubric, arena executors"] --> cli
+    eval -.->|chat| gateway
+    sidecar["BrowserGym sidecars (Python: miniwob, webarena)"] -.->|HTTP: /healthz /start /step /close| eval
+    sidecar -.-> gym["BrowserGym tasks (programmatic rewards)"]
 ```
 
 ## Core types
@@ -34,6 +38,8 @@ flowchart TB
 | `SelfHealer` | `pkg/uiauto/self_healer.go` | Coordinates fingerprint -> structural -> LLM -> VLM heal paths. |
 | `BrowserAgent` | `pkg/uiauto/browser.go` | chromedp implementation of the `Browser` interface. |
 | `omniparser.Client` | `pkg/uiauto/omniparser/client.go` | HTTP client for the OmniParser server. |
+| `MiniWobExecutor` | `pkg/eval/miniwob.go` | Generic BrowserGym arena executor: agent loop over a python sidecar, programmatic rewards, name/cap/prompt/timeout overrides (serves the miniwob and webarena registries). |
+| arena sidecars | `eval/miniwob/sidecar.py`, `eval/webarena/sidecar.py` | Own the gym environment (browser + reward); shared HTTP contract and observation renderer (goal + bid axtree, decorative-first pruning). |
 
 ## Data flow per step
 

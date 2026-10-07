@@ -36,6 +36,18 @@ const miniwobSystemPrompt = "You are a web UI agent. Each turn you receive GOAL 
 	"click('bid') | fill('bid', 'text') | press('key') | scroll(direction) | stop()\n" +
 	"Click buttons/links/checkboxes named by the goal; fill text boxes with requested values. Do not explain."
 
+// webarenaSystemPrompt extends the grammar with the answer protocol
+// WebArena's validator needs: it string-matches the LAST assistant
+// message, which only lands in its chat log via send_msg_to_user —
+// without it, answer-reporting tasks are structurally unpassable.
+const webarenaSystemPrompt = "You are a web UI agent working in a website admin panel. Each turn you receive GOAL and AXTREE (an accessibility tree; leaves carry a bid id in parentheses). Reply with EXACTLY ONE action line and nothing else:\n" +
+	"click('bid') | fill('bid', 'text') | press('key') | scroll(direction) | send_msg_to_user('answer text') | stop()\n" +
+	"Navigate with clicks. When the GOAL asks a question and you can see the answer, send it with send_msg_to_user('...'). Do not explain."
+
+// WebArenaSystemPrompt is the exported rung-2 grammar (send_msg_to_user
+// answer protocol) for wiring from cmd.
+const WebArenaSystemPrompt = webarenaSystemPrompt
+
 // MiniWobExecutor runs one BrowserGym task per scenario through the
 // sidecar, with the LLM choosing actions.
 type MiniWobExecutor struct {
@@ -46,6 +58,20 @@ type MiniWobExecutor struct {
 	// Client is injectable for tests; nil uses http.DefaultClient with a
 	// bounded timeout.
 	Client *http.Client
+	// ExecutorName renames the executor in records and PreFlight (empty =
+	// browsergym-miniwob). The loop is arena-agnostic: a second BrowserGym
+	// registry (webarena) reuses this executor under its own name.
+	ExecutorName string
+	// DefaultCap overrides the per-scenario step-budget default (0 =
+	// miniwobDefaultCap). Longer-horizon arenas need a longer cap.
+	DefaultCap int
+	// SystemPrompt replaces the built-in grammar prompt (empty =
+	// miniwobSystemPrompt); arenas with extra actions (WebArena's
+	// send_msg_to_user answer protocol) teach their own grammar.
+	SystemPrompt string
+	// StepTimeout bounds one sidecar /step call (0 = miniwobHTTPTIMEOUT).
+	// Dense pages can spend longer than a minute in reward evaluation.
+	StepTimeout time.Duration
 }
 
 // MiniWobLLMConfig names an OpenAI-compatible /v1/chat/completions
@@ -58,7 +84,12 @@ type MiniWobLLMConfig struct {
 	AgentHeader string
 }
 
-func (e *MiniWobExecutor) Name() string { return miniwobExecutorName }
+func (e *MiniWobExecutor) Name() string {
+	if e.ExecutorName != "" {
+		return e.ExecutorName
+	}
+	return miniwobExecutorName
+}
 
 // Healthy probes the sidecar so PreFlight can refuse a dead gym before
 // any task starts (NOT_RUN, never zeroed gauges).
@@ -111,7 +142,11 @@ func (e *MiniWobExecutor) client() *http.Client {
 	if e.Client != nil {
 		return e.Client
 	}
-	return &http.Client{Timeout: miniwobHTTPTIMEOUT}
+	timeout := miniwobHTTPTIMEOUT
+	if e.StepTimeout > 0 {
+		timeout = e.StepTimeout
+	}
+	return &http.Client{Timeout: timeout}
 }
 
 // Run plays one scenario: start the task, loop LLM->action->step until
@@ -140,6 +175,9 @@ func (e *MiniWobExecutor) Run(ctx context.Context, sc Scenario, attempt int) Run
 	cap := sc.MaxSteps
 	if cap <= 0 {
 		cap = miniwobDefaultCap
+		if e.DefaultCap > 0 {
+			cap = e.DefaultCap
+		}
 	}
 
 	var sr gymStartReply
@@ -154,7 +192,7 @@ func (e *MiniWobExecutor) Run(ctx context.Context, sc Scenario, attempt int) Run
 	}()
 
 	history := []chatMessage{
-		{Role: "system", Content: miniwobSystemPrompt},
+		{Role: "system", Content: e.systemPrompt()},
 		{Role: "user", Content: sr.Obs},
 	}
 	var tokensIn, tokensOut int
@@ -163,6 +201,7 @@ func (e *MiniWobExecutor) Run(ctx context.Context, sc Scenario, attempt int) Run
 
 	for step := 1; step <= cap && !done; step++ {
 		rec.Steps = step
+		history = trimHistory(history)
 		reply, err := e.chat(ctx, history)
 		if err != nil {
 			return fail("step %d LLM call: %v", step, err)
@@ -199,6 +238,39 @@ func (e *MiniWobExecutor) Run(ctx context.Context, sc Scenario, attempt int) Run
 		rec.Errors = append(rec.Errors, fmt.Sprintf("task finished with reward %.2f (want 1.00)", lastReward))
 	}
 	return rec
+}
+
+// systemPrompt returns the arena's grammar prompt (overridable; the
+// default teaches the miniwob action set).
+func (e *MiniWobExecutor) systemPrompt() string {
+	if e.SystemPrompt != "" {
+		return e.SystemPrompt
+	}
+	return miniwobSystemPrompt
+}
+
+// History bound: every step appends a full observation (the whole axtree,
+// up to the obs budget), so an unbounded history overflows the model's
+// context on long-horizon arenas — the first WebArena slice 400ed at
+// ~step 26. Keep the system prompt, the goal-bearing first observation
+// and the most recent turns; the omitted middle collapses to one note.
+const (
+	historyKeepTail = 8 // most recent messages kept verbatim
+	historyTrimNote = "[... earlier steps omitted ...]"
+)
+
+// trimHistory bounds the conversation when it exceeds system + first
+// observation + historyKeepTail messages.
+func trimHistory(history []chatMessage) []chatMessage {
+	const head = 2 // system + first user (goal + first tree)
+	if len(history) <= head+1+historyKeepTail {
+		return history
+	}
+	out := make([]chatMessage, 0, head+1+historyKeepTail)
+	out = append(out, history[:head]...)
+	out = append(out, chatMessage{Role: "user", Content: historyTrimNote})
+	out = append(out, history[len(history)-historyKeepTail:]...)
+	return out
 }
 
 // chatMessage is one turn of the loop's conversation.
@@ -308,7 +380,7 @@ func extractAction(content string) string {
 		// the action — fill('e5', 'click(x)') is a fill whose text
 		// happens to look like a call, never a click.
 		best := -1
-		for _, verb := range []string{"click", "fill", "scroll", "press", "hover", "drag", "move", "goto", "new_tab", "tab_close", "stop", "report"} {
+		for _, verb := range []string{"click", "fill", "scroll", "press", "hover", "drag", "move", "goto", "new_tab", "tab_close", "send_msg_to_user", "stop", "report"} {
 			if idx := strings.Index(low, verb+"("); idx >= 0 && (best < 0 || idx < best) {
 				best = idx
 			}
