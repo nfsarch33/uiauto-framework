@@ -89,6 +89,156 @@ class Refused(Exception):
         self.status = status
 
 
+# --- done-shape coercion ---------------------------------------------------
+#
+# The models keep emitting done(input: {...}) / done(instruction: '...')
+# where the library's DoneActionModel permits ONLY text — pydantic answers
+# "Extra inputs are not permitted" and the run dies on a 45-error
+# validation. The nightly regression sanctioned this mapping after the
+# shape survived the task-suffix fix: coerce the RAW completion before the
+# library validates it, collapsing every done() extra into text. Every
+# other action is untouched, and anything that fails to parse passes
+# through so the library's own error path fires exactly as before.
+
+
+def _done_text(params):
+    """Collapse a done(...) parameter dict into the text string the
+    action model wants: the text field if present, else the string
+    values (nested dicts included, insertion order) joined with spaces,
+    else a JSON rendering so the answer is never silently empty."""
+    if isinstance(params, str):
+        return params
+    if not isinstance(params, dict):
+        return None
+    if isinstance(params.get("text"), str) and params["text"].strip():
+        return params["text"]
+    leaves = []
+
+    def _walk(v):
+        if isinstance(v, str) and v.strip():
+            leaves.append(v)
+        elif isinstance(v, dict):
+            for x in v.values():
+                _walk(x)
+
+    for k, v in params.items():
+        if k != "text":
+            _walk(v)
+    if leaves:
+        return " ".join(leaves)
+    return json.dumps(params, ensure_ascii=False)
+
+
+# The fields the pinned library's DoneAction declares. Everything else in
+# a done() call is an undeclared extra the action model would reject.
+DONE_DECLARED_FIELDS = frozenset({"text", "success", "files_to_display"})
+
+
+def _coerce_done(done):
+    """One done() parameter dict, coerced. Returns None when there is
+    nothing to do (every key is declared, or nothing collapsible) so the
+    caller leaves the original untouched; otherwise a dict that keeps
+    every declared field verbatim and collapses the UNDECLARED extras
+    into text — an existing non-empty text wins, success and
+    files_to_display are never invented or dropped."""
+    if isinstance(done, str):
+        return {"text": done}
+    if not isinstance(done, dict):
+        return None
+    undeclared = [k for k in done if k not in DONE_DECLARED_FIELDS]
+    if not undeclared:
+        return None
+    out = {k: v for k, v in done.items() if k in DONE_DECLARED_FIELDS}
+    if not (isinstance(out.get("text"), str) and out["text"].strip()):
+        collapsed = _done_text({k: done[k] for k in undeclared})
+        if collapsed:
+            out["text"] = collapsed
+    if "text" not in out:
+        return None
+    return out
+
+
+def coerce_done_shape(content):
+    """Coerce done() action shapes inside a raw model completion. Only
+    the action list's done entries change, and only their UNDECLARED
+    extras collapse into text — the fields DoneAction declares (text,
+    success, files_to_display) pass through untouched, so an honest
+    done(text, success=false) can never be rewritten into a validating
+    success. Unparseable text returns unchanged (the library's own
+    validation error is the honest result)."""
+    if '"done"' not in content:
+        return content
+    try:
+        parsed = json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return content
+    actions = parsed.get("action") if isinstance(parsed, dict) else None
+    if not isinstance(actions, list):
+        return content
+    changed = False
+    for elem in actions:
+        if not isinstance(elem, dict):
+            continue
+        done = elem.get("done")
+        if done is None:
+            continue
+        coerced = _coerce_done(done)
+        if coerced is None:
+            continue
+        if coerced == done:
+            continue
+        elem["done"] = coerced
+        changed = True
+    if not changed:
+        return content
+    try:
+        return json.dumps(parsed, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return content
+
+
+class _CoercingCompletions:
+    """chat.completions shim: the completion text is coerced before the
+    library's model_validate_json sees it. Every other attribute and
+    call reaches the real resource untouched."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    async def create(self, *args, **kwargs):
+        response = await self._inner.create(*args, **kwargs)
+        try:
+            for choice in response.choices or []:
+                message = getattr(choice, "message", None)
+                if message is not None and isinstance(getattr(message, "content", None), str):
+                    message.content = coerce_done_shape(message.content)
+        except Exception:  # noqa: BLE001 - coercion must never kill a run
+            pass
+        return response
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _CoercingChat:
+    def __init__(self, inner):
+        self._inner = inner
+        self.completions = _CoercingCompletions(inner.completions)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class DoneShapeChatOpenAI(ChatOpenAI):
+    """ChatOpenAI whose provider responses pass through the done-shape
+    coercion. The structured-output request, usage accounting and every
+    error path are the library's own — only the completion text is
+    rewritten before validation."""
+
+    def get_client(self):
+        return _CoercingChat(super().get_client())
+
+
 def _llm(base_url, model):
     """Build the LLM client. The env key is attached only to the env
     default base_url; an (allowed) request-supplied endpoint never sees
@@ -101,7 +251,7 @@ def _llm(base_url, model):
     if base.rstrip("/") == LLM_BASE_URL.rstrip("/"):
         api_key = os.environ.get(LLM_API_KEY_ENV, api_key)
     headers = {LLM_AGENT_HEADER: LLM_AGENT_ID} if LLM_AGENT_HEADER and LLM_AGENT_ID else None
-    return ChatOpenAI(model=name, base_url=base, api_key=api_key, temperature=0, default_headers=headers)
+    return DoneShapeChatOpenAI(model=name, base_url=base, api_key=api_key, temperature=0, default_headers=headers)
 
 
 # --- CDP loopback bridges -------------------------------------------------
