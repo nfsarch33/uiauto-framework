@@ -129,10 +129,43 @@ def _done_text(params):
     return json.dumps(params, ensure_ascii=False)
 
 
+# The fields the pinned library's DoneAction declares. Everything else in
+# a done() call is an undeclared extra the action model would reject.
+DONE_DECLARED_FIELDS = frozenset({"text", "success", "files_to_display"})
+
+
+def _coerce_done(done):
+    """One done() parameter dict, coerced. Returns None when there is
+    nothing to do (every key is declared, or nothing collapsible) so the
+    caller leaves the original untouched; otherwise a dict that keeps
+    every declared field verbatim and collapses the UNDECLARED extras
+    into text — an existing non-empty text wins, success and
+    files_to_display are never invented or dropped."""
+    if isinstance(done, str):
+        return {"text": done}
+    if not isinstance(done, dict):
+        return None
+    undeclared = [k for k in done if k not in DONE_DECLARED_FIELDS]
+    if not undeclared:
+        return None
+    out = {k: v for k, v in done.items() if k in DONE_DECLARED_FIELDS}
+    if not (isinstance(out.get("text"), str) and out["text"].strip()):
+        collapsed = _done_text({k: done[k] for k in undeclared})
+        if collapsed:
+            out["text"] = collapsed
+    if "text" not in out:
+        return None
+    return out
+
+
 def coerce_done_shape(content):
     """Coerce done() action shapes inside a raw model completion. Only
-    the action list's done entries change; unparseable text returns
-    unchanged (the library's validation error is the honest result)."""
+    the action list's done entries change, and only their UNDECLARED
+    extras collapse into text — the fields DoneAction declares (text,
+    success, files_to_display) pass through untouched, so an honest
+    done(text, success=false) can never be rewritten into a validating
+    success. Unparseable text returns unchanged (the library's own
+    validation error is the honest result)."""
     if '"done"' not in content:
         return content
     try:
@@ -149,12 +182,12 @@ def coerce_done_shape(content):
         done = elem.get("done")
         if done is None:
             continue
-        text = _done_text(done)
-        if text is None:
+        coerced = _coerce_done(done)
+        if coerced is None:
             continue
-        if done == {"text": text}:
+        if coerced == done:
             continue
-        elem["done"] = {"text": text}
+        elem["done"] = coerced
         changed = True
     if not changed:
         return content

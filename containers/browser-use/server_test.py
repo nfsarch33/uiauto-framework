@@ -160,3 +160,33 @@ class _Async:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReviewerRound1DeclaredFields(unittest.TestCase):
+    """Round-1 blocker rows: the coercion must keep every field DoneAction
+    declares (text, success, files_to_display) and only collapse the
+    UNDECLARED extras into text — otherwise done(text, success=false) is
+    rewritten into a validating success and the nightly counts a failed
+    run as a pass."""
+
+    def test_all_declared_keys_pass_through_unchanged(self):
+        raw = '{"action": [{"done": {"text": "no", "success": false}}]}'
+        self.assertEqual(server.coerce_done_shape(raw), raw)
+
+    def test_declared_success_survives_an_extras_collapse(self):
+        got = json.loads(
+            server.coerce_done_shape(
+                '{"action": [{"done": {"input": {"value": "Ada Lovelace"}, "success": false}}]}'
+            )
+        )
+        self.assertEqual(got["action"][0]["done"]["text"], "Ada Lovelace")
+        self.assertIs(got["action"][0]["done"]["success"], False)
+
+    def test_files_to_display_survives_too(self):
+        got = json.loads(
+            server.coerce_done_shape(
+                '{"action": [{"done": {"files_to_display": ["/a.png"], "note": "chart attached"}}]}'
+            )
+        )
+        self.assertEqual(got["action"][0]["done"]["files_to_display"], ["/a.png"])
+        self.assertEqual(got["action"][0]["done"]["text"], "chart attached")
