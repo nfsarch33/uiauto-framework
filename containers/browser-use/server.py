@@ -221,9 +221,27 @@ class _CoercingCompletions:
 
 
 class _CoercingChat:
+    """The CHAT resource shim: completions on it are coerced before the
+    library's model_validate_json sees them; every other attribute and
+    call reaches the real resource untouched. The wrapper must sit on
+    client.CHAT — the library's path is get_client().chat.completions,
+    so a client-level .completions wrapper is never in that chain (the
+    wiring bug this class replaces)."""
+
     def __init__(self, inner):
         self._inner = inner
         self.completions = _CoercingCompletions(inner.completions)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _CoercingClient:
+    """The CLIENT shim: hands out the wrapped chat resource."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.chat = _CoercingChat(inner.chat)
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
@@ -233,10 +251,13 @@ class DoneShapeChatOpenAI(ChatOpenAI):
     """ChatOpenAI whose provider responses pass through the done-shape
     coercion. The structured-output request, usage accounting and every
     error path are the library's own — only the completion text is
-    rewritten before validation."""
+    rewritten before validation. The wrap happens on the client returned
+    by get_client(), at the CHAT level, which is exactly where
+    ChatOpenAI.ainvoke's `self.get_client().chat.completions.create`
+    call chain passes."""
 
     def get_client(self):
-        return _CoercingChat(super().get_client())
+        return _CoercingClient(super().get_client())
 
 
 def _llm(base_url, model):
