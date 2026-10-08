@@ -21,6 +21,10 @@ _stub_llm = types.ModuleType("browser_use.llm")
 class _FakeChatOpenAI:  # noqa: D401 - minimal stand-in for the real base
     def __init__(self, **kwargs):
         self.kwargs = kwargs
+        self.stub_client = None
+
+    def get_client(self):
+        return self.stub_client
 class _FakeAgent:  # noqa: D401 - the run path is exercised in the container
     pass
 class _FakeBrowser:
@@ -134,6 +138,46 @@ class CoercingCompletions(unittest.TestCase):
     def test_other_attributes_reach_the_inner_resource(self):
         inner = SimpleNamespace(create=None, model="m")
         self.assertEqual(server._CoercingCompletions(inner).model, "m")
+
+
+class WiringThroughTheRealPath(unittest.TestCase):
+    """The joined chain the library actually calls:
+    get_client().chat.completions.create — the r1 wrapper sat on
+    client.completions and never fired (the nightly proved it)."""
+
+    def _llm_with_stub(self, content):
+        import asyncio
+        from types import SimpleNamespace
+
+        async def create(**kw):
+            return completion(content)
+
+        completions = SimpleNamespace(create=create)
+        chat = SimpleNamespace(completions=completions)
+        client = SimpleNamespace(chat=chat, completions=SimpleNamespace(create=create))
+        llm = server.DoneShapeChatOpenAI(model="m", base_url="http://127.0.0.1:1", api_key="k")
+        llm.stub_client = client
+        return llm
+
+    def test_chat_completions_create_coerces_the_nightly_shape(self):
+        import asyncio
+
+        llm = self._llm_with_stub(
+            '{"action": [{"done": {"input": {"index": 889, "value": "Ada Lovelace"}}}]}'
+        )
+        resp = asyncio.run(llm.get_client().chat.completions.create(model="m", messages=[]))
+        self.assertEqual(
+            resp.choices[0].message.content,
+            '{"action": [{"done": {"text": "Ada Lovelace"}}]}',
+        )
+
+    def test_honest_failure_passes_through_the_path(self):
+        import asyncio
+
+        raw = '{"action": [{"done": {"text": "no", "success": false}}]}'
+        llm = self._llm_with_stub(raw)
+        resp = asyncio.run(llm.get_client().chat.completions.create(model="m", messages=[]))
+        self.assertEqual(resp.choices[0].message.content, raw)
 
 
 class LLMUsesSubclass(unittest.TestCase):
