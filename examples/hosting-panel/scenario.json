@@ -1,0 +1,68 @@
+[
+  {
+    "id": "hosting-panel-001",
+    "name": "Add the SSH public key and create the shop subdomain",
+    "natural_language": [
+      "Verify the hosting panel heading is visible",
+      "Type the fleet key label into the key name input",
+      "Type the fleet public key into the public key textarea",
+      "Click the add key button",
+      "Wait until the append-only note is visible",
+      "Verify the earlier deploy key is still listed",
+      "Type the shop label into the subdomain input",
+      "Type the serving directory into the directory input",
+      "Click the add website button",
+      "Verify the existing www site is still listed"
+    ],
+    "page_objects": [
+      "panel.heading",
+      "ssh_keys.name_input",
+      "ssh_keys.body_input",
+      "ssh_keys.add_button",
+      "ssh_keys.append_note",
+      "ssh_keys.existing_row",
+      "websites.subdomain_input",
+      "websites.directory_input",
+      "websites.add_button",
+      "websites.existing_row"
+    ],
+    "selectors_used": [
+      "#panel-heading",
+      "#ssh-key-name",
+      "#ssh-key-body",
+      "#ssh-key-add",
+      "#ssh-key-note",
+      "#ssh-key-existing",
+      "#website-subdomain",
+      "#website-directory",
+      "#website-add",
+      "#website-existing"
+    ],
+    "source": "framework",
+    "tags": ["hosting-panel", "ssh-keys", "add-website"],
+    "action_types": [
+      "verify",
+      "type",
+      "type",
+      "click",
+      "wait",
+      "verify",
+      "type",
+      "type",
+      "click",
+      "verify"
+    ],
+    "action_values": [
+      "",
+      "fleet-automation",
+      "ssh-ed25519 AAAAFixturePublicKeyForTheDryRunOnly user@fleet",
+      "",
+      "#ssh-key-note",
+      "",
+      "shop",
+      "~/shop.example",
+      "",
+      ""
+    ]
+  }
+]

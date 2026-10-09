@@ -1,0 +1,77 @@
+<!doctype html>
+<!-- Generic hosting-panel fixture: the shape of a shared-hosting control
+     panel an automation agent drives — an SSH public-key form (append-only
+     list) and an add-website form (subdomain + TLS checkbox). Deliberately
+     generic: no real provider, hostname, or account appears here. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hosting Panel — fixture</title>
+</head>
+<body>
+  <main>
+    <h1 id="panel-heading">Hosting Panel</h1>
+
+    <section id="ssh-keys-section" aria-labelledby="ssh-keys-heading">
+      <h2 id="ssh-keys-heading">SSH keys</h2>
+      <form id="ssh-key-form">
+        <label for="ssh-key-name">Key name</label>
+        <input id="ssh-key-name" name="key-name" type="text" autocomplete="off" />
+        <label for="ssh-key-body">Public key</label>
+        <textarea id="ssh-key-body" name="key-body" rows="3"
+          placeholder="ssh-ed25519 AAAA… user@host"></textarea>
+        <button id="ssh-key-add" type="submit">Add key</button>
+      </form>
+      <ul id="ssh-key-list">
+        <li id="ssh-key-existing">deploy-2024 (added earlier — must stay)</li>
+      </ul>
+      <p id="ssh-key-note" hidden>Append-only: existing keys are never replaced.</p>
+    </section>
+
+    <section id="websites-section" aria-labelledby="websites-heading">
+      <h2 id="websites-heading">Websites</h2>
+      <form id="add-website-form">
+        <label for="website-subdomain">Subdomain</label>
+        <input id="website-subdomain" name="subdomain" type="text" autocomplete="off"
+          placeholder="shop" />
+        <label for="website-directory">Serving directory</label>
+        <input id="website-directory" name="directory" type="text" autocomplete="off"
+          placeholder="~/shop.example" />
+        <label for="website-tls">
+          <input id="website-tls" name="tls" type="checkbox" checked />
+          Free Let&rsquo;s Encrypt certificate
+        </label>
+        <button id="website-add" type="submit">Add website</button>
+      </form>
+      <ul id="website-list">
+        <li id="website-existing">www (existing site — must stay)</li>
+      </ul>
+    </section>
+  </main>
+  <script>
+    // Minimal behaviour so the dry-run executor observes the same shapes a
+    // live panel produces: submissions append to the lists; existing rows
+    // are never touched (append-only is the runbook's rule).
+    document.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (ev.target.id === "ssh-key-form") {
+        var name = document.getElementById("ssh-key-name").value.trim() || "unnamed";
+        var li = document.createElement("li");
+        li.id = "ssh-key-added-" + name;
+        li.textContent = name + " (added by automation)";
+        document.getElementById("ssh-key-list").appendChild(li);
+        document.getElementById("ssh-key-note").hidden = false;
+        document.getElementById("ssh-key-existing").textContent += "";
+      }
+      if (ev.target.id === "add-website-form") {
+        var sub = document.getElementById("website-subdomain").value.trim() || "site";
+        var li = document.createElement("li");
+        li.id = "website-added-" + sub;
+        li.textContent = sub + " (added by automation, TLS on)";
+        document.getElementById("website-list").appendChild(li);
+      }
+    });
+  </script>
+</body>
+</html>
