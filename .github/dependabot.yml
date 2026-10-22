@@ -9,6 +9,17 @@ updates:
       go-dependencies:
         patterns:
           - "*"
+        exclude:
+          # chromedp v0.17+ and its matching cdproto move to the generics
+          # API; pkg/uiauto still uses the pre-generics call sites. The
+          # weekly group bumped past the break and main stopped compiling
+          # (only the nightly caught it). Un-ignore both once the call
+          # sites are migrated.
+          - github.com/chromedp/chromedp
+          - github.com/chromedp/cdproto
+    ignore:
+      - dependency-name: github.com/chromedp/chromedp
+      - dependency-name: github.com/chromedp/cdproto
   - package-ecosystem: github-actions
     directory: /
     schedule:
