@@ -95,6 +95,10 @@ services:
   browser-use:
     build:
       context: ./containers/browser-use
+      # docker compose's build default filename is "Dockerfile"; the
+      # podman-conventional "Containerfile" must be named explicitly or
+      # CI's docker compose fails to solve the build context.
+      dockerfile: Containerfile
     image: uiauto/browser-use:integration
     container_name: uiauto-browseruse
     environment:
