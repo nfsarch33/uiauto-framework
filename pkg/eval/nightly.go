@@ -138,7 +138,6 @@ func suiteHealthy(m SuiteMetrics) bool {
 // exists for: 27 of 30 runs failed and the gauge stayed at 1 for two
 // nights). Decision accuracy and mean run latency ride along: they
 // are the probation numbers the weekly review reads.
-
 func WritePrefixedTextfile(path, prefix string, verdict Verdict, m SuiteMetrics, records []RunRecord) error {
 	verdictValue := 0.0
 	if verdict == VerdictOK && suiteHealthy(m) {
