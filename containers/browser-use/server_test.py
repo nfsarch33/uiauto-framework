@@ -202,6 +202,79 @@ class _Async:
         return coro().__await__()
 
 
+
+class HealthzProbesCDP(unittest.TestCase):
+    """/healthz must answer ok=false when the attached Chrome is gone.
+
+    A service that answers ok=true while the CDP endpoint is down lets a
+    run score 3/30 and the textfile stay green. The probe
+    is the CDP /json/version fetch, over the same endpoint the browser
+    attaches to.
+    """
+
+    def _cdp_server(self):
+        import http.server
+        import threading
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/json/version":
+                    body = b'{"Browser": "Chrome/120.0.0.0"}'
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        return srv
+
+    def _closed_port(self):
+        import socket
+
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
+    def test_probe_is_true_when_the_cdp_answers(self):
+        srv = self._cdp_server()
+        try:
+            url = "http://127.0.0.1:%d" % srv.server_address[1]
+            self.assertTrue(server._cdp_reachable(url))
+        finally:
+            srv.shutdown()
+
+    def test_probe_is_false_when_the_cdp_is_down(self):
+        self.assertFalse(server._cdp_reachable("http://127.0.0.1:%d" % self._closed_port()))
+
+    def test_probe_is_false_when_no_cdp_is_configured(self):
+        self.assertFalse(server._cdp_reachable(""))
+
+    def test_health_payload_reports_not_ok_when_the_probe_fails(self):
+        payload = server._health_payload("http://127.0.0.1:%d" % self._closed_port())
+        self.assertFalse(payload["ok"])
+        self.assertFalse(payload["cdp_reachable"])
+        self.assertTrue(payload["cdp_configured"])
+
+    def test_health_payload_reports_ok_when_the_probe_answers(self):
+        srv = self._cdp_server()
+        try:
+            url = "http://127.0.0.1:%d" % srv.server_address[1]
+            payload = server._health_payload(url)
+            self.assertTrue(payload["ok"])
+            self.assertTrue(payload["cdp_reachable"])
+        finally:
+            srv.shutdown()
+
 if __name__ == "__main__":
     unittest.main()
 

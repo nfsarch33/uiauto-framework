@@ -30,6 +30,18 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The nightly verdict gauge no longer reports a green run for a suite
+  whose runs died. `<prefix>_ok` reads 1 only when the suite ran AND at
+  least 90% of its task runs succeeded AND no executor was left with zero
+  successes. A suite that ran 27 of 30 tasks, or one whose browser lane
+  died while another lane passed, now reads 0. The gauge's HELP text
+  states the new meaning.
+- The browser-use executor's `/healthz` probes the CDP endpoint
+  (`/json/version`) and reports `ok: false` when the attached browser is
+  gone, instead of answering `ok: true` for a process that is up but
+  cannot drive a browser. The nightly health gate honours that flag, so a
+  dead CDP is a `not_run` rather than a run full of failures.
+
 - `NewMetrics` panicked on duplicate registration (`go test -count>1`,
   in-process serve restarts); it is now idempotent per registerer.
 - Circuit-breaker Prometheus collectors were only registered on the
