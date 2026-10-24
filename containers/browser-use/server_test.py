@@ -203,6 +203,43 @@ class _Async:
 
 
 
+def _cdp_server():
+    """A CDP endpoint that answers /json/version, like a live Chrome."""
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/json/version":
+                body = b'{"Browser": "Chrome/120.0.0.0"}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def _closed_port():
+    """A port with nothing behind it: the CDP endpoint is gone."""
+    import socket
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
 class HealthzProbesCDP(unittest.TestCase):
     """/healthz must answer ok=false when the attached Chrome is gone.
 
@@ -212,61 +249,29 @@ class HealthzProbesCDP(unittest.TestCase):
     attaches to.
     """
 
-    def _cdp_server(self):
-        import http.server
-        import threading
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path == "/json/version":
-                    body = b'{"Browser": "Chrome/120.0.0.0"}'
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-
-            def log_message(self, *a):
-                pass
-
-        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        return srv
-
-    def _closed_port(self):
-        import socket
-
-        s = socket.socket()
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-        s.close()
-        return port
-
     def test_probe_is_true_when_the_cdp_answers(self):
-        srv = self._cdp_server()
+        srv = _cdp_server()
         try:
             url = "http://127.0.0.1:%d" % srv.server_address[1]
             self.assertTrue(server._cdp_reachable(url))
         finally:
             srv.shutdown()
+            srv.server_close()
 
     def test_probe_is_false_when_the_cdp_is_down(self):
-        self.assertFalse(server._cdp_reachable("http://127.0.0.1:%d" % self._closed_port()))
+        self.assertFalse(server._cdp_reachable("http://127.0.0.1:%d" % _closed_port()))
 
     def test_probe_is_false_when_no_cdp_is_configured(self):
         self.assertFalse(server._cdp_reachable(""))
 
     def test_health_payload_reports_not_ok_when_the_probe_fails(self):
-        payload = server._health_payload("http://127.0.0.1:%d" % self._closed_port())
+        payload = server._health_payload("http://127.0.0.1:%d" % _closed_port())
         self.assertFalse(payload["ok"])
         self.assertFalse(payload["cdp_reachable"])
         self.assertTrue(payload["cdp_configured"])
 
     def test_health_payload_reports_ok_when_the_probe_answers(self):
-        srv = self._cdp_server()
+        srv = _cdp_server()
         try:
             url = "http://127.0.0.1:%d" % srv.server_address[1]
             payload = server._health_payload(url)
@@ -274,6 +279,62 @@ class HealthzProbesCDP(unittest.TestCase):
             self.assertTrue(payload["cdp_reachable"])
         finally:
             srv.shutdown()
+            srv.server_close()
+
+
+class HealthzEndpointReflectsCDP(unittest.TestCase):
+    """The ENDPOINT, not just the helper: /healthz must answer ok=false
+    when the attached Chrome is gone.
+
+    The old handler returned a hardcoded ok=true, so the nightly read a
+    green lane off a dead CDP (2026-10-13) and the verdict gauge stayed
+    green for two nights. Mutant this kills: the handler bypassing the
+    probe (a body built without _health_payload)."""
+
+    def _serve(self):
+        import http.server
+        import threading
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        return srv
+
+    def _healthz(self, port):
+        import urllib.request
+
+        with urllib.request.urlopen("http://127.0.0.1:%d/healthz" % port, timeout=5) as resp:
+            return json.loads(resp.read().decode())
+
+    def test_healthz_reports_not_ok_when_the_cdp_is_down(self):
+        old_cdp = server.CDP_URL
+        server.CDP_URL = "http://127.0.0.1:%d" % _closed_port()
+        srv = self._serve()
+        try:
+            body = self._healthz(srv.server_address[1])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            server.CDP_URL = old_cdp
+        self.assertFalse(body["ok"])
+        self.assertFalse(body["cdp_reachable"])
+        self.assertTrue(body["cdp_configured"])
+
+    def test_healthz_reports_ok_when_the_cdp_answers(self):
+        cdp = _cdp_server()
+        old_cdp = server.CDP_URL
+        server.CDP_URL = "http://127.0.0.1:%d" % cdp.server_address[1]
+        srv = self._serve()
+        try:
+            body = self._healthz(srv.server_address[1])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            server.CDP_URL = old_cdp
+            cdp.shutdown()
+            cdp.server_close()
+        self.assertTrue(body["ok"])
+        self.assertTrue(body["cdp_reachable"])
+
 
 if __name__ == "__main__":
     unittest.main()
