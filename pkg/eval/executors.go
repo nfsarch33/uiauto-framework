@@ -24,8 +24,15 @@ func (e *BrowserUseExecutor) Name() string { return "browser-use" }
 // Healthy probes the executor service so a nightly run can be gated to
 // NOT_RUN instead of recording a down lane as zero failures.
 func (e *BrowserUseExecutor) Healthy(ctx context.Context) error {
-	if _, err := browseruse.New(e.ServiceURL).Health(ctx); err != nil {
+	h, err := browseruse.New(e.ServiceURL).Health(ctx)
+	if err != nil {
 		return err
+	}
+	// The service's own verdict is the gate. A 200 with ok=false means the
+	// attached Chrome is gone: the nightly used to run anyway,
+	// score 3/30 and keep the textfile green.
+	if !h.OK {
+		return fmt.Errorf("browseruse: executor reports not ok (cdp_configured=%t)", h.CDPConfigured)
 	}
 	return nil
 }

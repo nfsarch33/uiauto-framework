@@ -10,6 +10,43 @@ import (
 	"github.com/nfsarch33/uiauto-framework/pkg/uiauto/laya"
 )
 
+// The executor's own healthz verdict IS the gate. A service that answers
+// ok=true while the attached Chrome is gone lets the nightly run anyway,
+// score 3/30 and keep the textfile green.
+// Mutant this kills: the gate ignoring the ok flag (a 200 with ok=false
+// still passed).
+func TestBrowserUseExecutorHealthyFailsWhenTheServiceReportsNotOk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":false,"browser_use":"0.13.10","cdp_configured":true}`))
+	}))
+	defer srv.Close()
+
+	e := &BrowserUseExecutor{ServiceURL: srv.URL}
+	if err := e.Healthy(context.Background()); err == nil {
+		t.Fatal("a healthz payload with ok=false must fail the nightly gate")
+	}
+}
+
+// The green counterpart: the gate still passes a service that reports ok.
+// Mutant this kills: the gate inverted.
+func TestBrowserUseExecutorHealthyPassesWhenTheServiceReportsOk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"browser_use":"0.13.10","cdp_configured":true}`))
+	}))
+	defer srv.Close()
+
+	e := &BrowserUseExecutor{ServiceURL: srv.URL}
+	if err := e.Healthy(context.Background()); err != nil {
+		t.Fatalf("a healthz payload with ok=true must pass the gate: %v", err)
+	}
+}
+
 func TestGradeAnswers(t *testing.T) {
 	high, low := 0.9, 0.2
 	answers := map[string]laya.Answer{

@@ -242,8 +242,11 @@ func TestWriteNightlyTextfileCountsViolationsAndPassAtN(t *testing.T) {
 	}
 	raw, _ := os.ReadFile(path)
 	text := string(raw)
+	// Two of three runs passed: below the 90 percent success floor, so the
+	// verdict gauge reads 0 even though the suite ran to completion. The
+	// verdict gauge is a health verdict, not a "the suite started" flag.
 	for _, want := range []string{
-		"uiauto_eval_nightly_ok 1",
+		"uiauto_eval_nightly_ok 0",
 		"uiauto_eval_nightly_runs 3",
 		"uiauto_eval_nightly_successful_runs 2",
 		"uiauto_eval_nightly_allowlist_violations 1",
@@ -256,6 +259,99 @@ func TestWriteNightlyTextfileCountsViolationsAndPassAtN(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("textfile missing %q:\n%s", want, text)
 		}
+	}
+}
+
+// The false green this guard exists for: 27 browser-use runs died on a down CDP
+// while the three laya-decide runs passed, so the suite RAN, the verdict
+// was OK, and the verdict gauge read 1 for two nights while the lane
+// scored 3/30. Mutant this kills: the success floor dropped from the
+// verdict gauge.
+func TestWriteNightlyTextfileFalseGreenTurnsTheVerdictGaugeRed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nightly.prom")
+	records := make([]RunRecord, 0, 30)
+	for i := 0; i < 27; i++ {
+		records = append(records, RunRecord{
+			ScenarioID: "browser-task",
+			Executor:   "browser-use",
+			Errors:     []string{"browseruse: run returned 500: Server disconnected without sending a response."},
+		})
+	}
+	for i := 0; i < 3; i++ {
+		records = append(records, RunRecord{ScenarioID: "decide-task", Executor: "laya-decide", OK: true})
+	}
+	m := Aggregate(records)
+	if err := WriteNightlyTextfile(path, VerdictOK, m, records); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(path)
+	text := string(raw)
+	if !strings.Contains(text, "uiauto_eval_nightly_ok 0") {
+		t.Fatalf("3 of 30 runs passed: the verdict gauge must read 0, not 1:\n%s", text)
+	}
+}
+
+// A dead executor is a false green even when the overall rate clears the
+// floor: 30 laya-decide runs pass and all three browser-use runs die
+// (30/33 = 90.9 percent), so only the dead-lane rule catches it.
+// Mutant this kills: the dead-executor rule dropped from the guard.
+func TestWriteNightlyTextfileDeadExecutorTurnsTheVerdictGaugeRed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nightly.prom")
+	records := make([]RunRecord, 0, 33)
+	for i := 0; i < 30; i++ {
+		records = append(records, RunRecord{ScenarioID: "decide-task", Executor: "laya-decide", OK: true})
+	}
+	for i := 0; i < 3; i++ {
+		records = append(records, RunRecord{
+			ScenarioID: "browser-task",
+			Executor:   "browser-use",
+			Errors:     []string{"browseruse: run returned 500: Server disconnected without sending a response."},
+		})
+	}
+	m := Aggregate(records)
+	if m.SuccessfulRuns*100 < m.Runs*90 {
+		t.Fatalf("fixture must CLEAR the overall floor, got %d/%d", m.SuccessfulRuns, m.Runs)
+	}
+	if err := WriteNightlyTextfile(path, VerdictOK, m, records); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(path)
+	text := string(raw)
+	if !strings.Contains(text, "uiauto_eval_nightly_ok 0") {
+		t.Fatalf("every browser-use run died: the verdict gauge must read 0, not 1:\n%s", text)
+	}
+}
+
+// The healthy shape stays green: 27 of 30 runs passed is exactly the
+// floor, not below it. Mutant this kills: the floor moved one run too
+// high and failed a healthy nightly.
+func TestWriteNightlyTextfileHealthySuiteStaysGreen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nightly.prom")
+	records := make([]RunRecord, 0, 30)
+	for i := 0; i < 24; i++ {
+		records = append(records, RunRecord{ScenarioID: "browser-task", Executor: "browser-use", OK: true})
+	}
+	for i := 0; i < 3; i++ {
+		records = append(records, RunRecord{
+			ScenarioID: "browser-task",
+			Executor:   "browser-use",
+			Errors:     []string{"browseruse: task failed: no final result"},
+		})
+	}
+	for i := 0; i < 3; i++ {
+		records = append(records, RunRecord{ScenarioID: "decide-task", Executor: "laya-decide", OK: true})
+	}
+	m := Aggregate(records)
+	if m.SuccessfulRuns != 27 || m.Runs != 30 {
+		t.Fatalf("fixture must be 27 of 30, got %d of %d", m.SuccessfulRuns, m.Runs)
+	}
+	if err := WriteNightlyTextfile(path, VerdictOK, m, records); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(path)
+	text := string(raw)
+	if !strings.Contains(text, "uiauto_eval_nightly_ok 1") {
+		t.Fatalf("27 of 30 runs passed: the verdict gauge must read 1:\n%s", text)
 	}
 }
 

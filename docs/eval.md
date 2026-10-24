@@ -82,6 +82,24 @@ Decisions carry the engine's own `confidence`. During probation the floor
 must be able to separate wrong-and-confident from unsure before any
 verdict can be graded.
 
+## Nightly verdict gauges
+
+`ui-agent eval --prom-textfile <path> --prom-prefix <prefix>` writes the
+suite's outcome gauges as a Prometheus textfile. The verdict gauge
+`<prefix>_ok` reads 1 only when the suite RAN and PASSED:
+
+- the health gate let the suite start (an unhealthy executor is
+  `not_run`, never a recorded run),
+- at least 90% of the task runs succeeded (`SuccessFloorPercent`; the
+  30-task browser nightly clears the floor at 27 successes), and
+- no executor was left with zero successful runs, because a dead lane
+  otherwise hides behind another lane's passes.
+
+Anything else reads 0, including a suite that ran and failed most of its
+tasks. The gauge is a health verdict, not a "the suite started" flag, so
+an alert on `<prefix>_ok == 0` fires on a regression and not only on an
+outage.
+
 ## Rubrics
 
 `eval/rubrics/*.yaml`; each criterion names a metric snapshot key, an
