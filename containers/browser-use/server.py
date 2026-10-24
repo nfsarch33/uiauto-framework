@@ -2,7 +2,8 @@
 
 POST /run     {"task": ..., "url": ..., "max_steps": ..., "cdp_url": ...,
                "model": ..., "base_url": ..., "headless": ...} -> run result
-GET  /healthz -> {"ok": true, "browser_use": "<version>", "cdp_configured": bool}
+GET  /healthz -> {"ok": <the attached browser answered>, "browser_use": "<version>",
+                  "cdp_configured": bool, "cdp_reachable": bool}
 
 Each request runs one browser-use Agent in its own event loop (the stdlib
 http server is threaded; Agent.run is async). The browser is NEVER
@@ -42,6 +43,7 @@ import socket
 import subprocess
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.metadata import version as pkg_version
 from urllib.parse import urlparse
@@ -55,6 +57,10 @@ LLM_BASE_URL = os.environ.get("BU_LLM_BASE_URL", "")
 LLM_MODEL = os.environ.get("BU_LLM_MODEL", "")
 LLM_API_KEY_ENV = os.environ.get("BU_LLM_API_KEY_ENV", "BROWSER_USE_API_KEY")
 ALLOW_REQUEST_ENDPOINTS = os.environ.get("BU_ALLOW_REQUEST_ENDPOINTS", "") == "1"
+# The CDP probe timeout for /healthz. The endpoint is on the host loopback
+# (or a socat bridge to it), so two seconds is generous; the health gate
+# that waits for this service polls every two seconds.
+CDP_HEALTH_TIMEOUT_S = float(os.environ.get("BU_CDP_HEALTH_TIMEOUT_S", "2.0"))
 # Gateways that route or gate per calling agent identify the caller by this
 # header; without it the OpenAI client's User-Agent is sniffed and this lane
 # can be mistaken for another tool. Empty BU_LLM_AGENT_ID sends no header.
@@ -461,6 +467,41 @@ async def _run(req):
     }
 
 
+def _cdp_reachable(cdp_url, timeout=None):
+    """Is the attached Chrome actually there? The CDP /json/version fetch,
+    over the same endpoint the browser attaches to. A down CDP is the
+    failure this probe exists for: /healthz used to answer ok=true while
+    the CDP endpoint was gone, so a run scored 3/30 and the textfile
+    stayed green for two nights."""
+    if not cdp_url:
+        return False
+    if timeout is None:
+        timeout = CDP_HEALTH_TIMEOUT_S
+    try:
+        url = _bridge_url(cdp_url.rstrip("/")) + "/json/version"
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        # Any failure to reach the endpoint is "not reachable": a refused
+        # connection, a timeout, a dead bridge. A health probe never
+        # raises.
+        return False
+
+
+def _health_payload(cdp_url=None):
+    """The /healthz body. ok is the LANE's verdict, not the process's:
+    the service is up and the browser it drives is not."""
+    if cdp_url is None:
+        cdp_url = CDP_URL
+    reachable = _cdp_reachable(cdp_url)
+    return {
+        "ok": reachable,
+        "browser_use": BROWSER_USE_VERSION,
+        "cdp_configured": bool(cdp_url),
+        "cdp_reachable": reachable,
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     # Bound the per-connection read window: a slow body writer must not
     # hold a thread forever (the server is threaded, not async).
@@ -483,11 +524,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, {"error": "Host not allowed"})
             return
         if self.path == "/healthz":
-            self._send(200, {
-                "ok": True,
-                "browser_use": BROWSER_USE_VERSION,
-                "cdp_configured": bool(CDP_URL),
-            })
+            self._send(200, _health_payload())
         else:
             self._send(404, {"error": "not found"})
 

@@ -95,18 +95,52 @@ func WriteNightlyTextfile(path string, verdict Verdict, m SuiteMetrics, records 
 	return WritePrefixedTextfile(path, "uiauto_eval_nightly", verdict, m, records)
 }
 
+// SuccessFloorPercent is the share of successful task runs a suite must
+// reach for its verdict gauge to read 1. The browser nightly runs 10
+// tasks x 3 repeats = 30 runs, so 90 percent is the 27/30 floor: all 27
+// browser-use runs can die on a down CDP while the three runs of another
+// lane pass, and the gauge would read 1 for two nights.
+const SuccessFloorPercent = 90
+
+// suiteHealthy is the false-green guard: a suite that RAN is not a suite
+// that PASSED. VerdictOK only says the health gate let the suite start;
+// the gauge reads 1 only when the runs cleared the success floor and no
+// executor was dead. A dead executor is its own condition: a suite whose
+// other lane passes can still hide a browser lane that never answered
+// (30 laya-decide runs passing and 3 browser-use runs dying clears the
+// overall floor at 90.9 percent).
+func suiteHealthy(m SuiteMetrics) bool {
+	if m.Runs <= 0 {
+		return false
+	}
+	if m.SuccessfulRuns*100 < m.Runs*SuccessFloorPercent {
+		return false
+	}
+	for name, em := range m.PerExecutor {
+		if name == "" || em == nil || em.Runs == 0 {
+			continue
+		}
+		if em.SuccessfulRuns == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // WritePrefixedTextfile emits the suite gauges in Prometheus text
 // format under a caller-chosen prefix, atomically (temp file + rename)
 // so a collector never reads a half-written file. Two nightlies (the
 // browser suite and the laya probation suite) share one textfile
 // directory; without distinct prefixes the collector would see the
 // same series name twice. The verdict gauge is 1 only for a suite that
-// RAN — a dead executor can never look like a clean run. Decision
-// accuracy and mean run latency ride along: they are the probation
-// numbers the weekly review reads.
+// RAN and PASSED: a dead executor can never look like a clean run, and
+// neither can a suite whose runs died (the false green this guard
+// exists for: 27 of 30 runs failed and the gauge stayed at 1 for two
+// nights). Decision accuracy and mean run latency ride along: they
+// are the probation numbers the weekly review reads.
 func WritePrefixedTextfile(path, prefix string, verdict Verdict, m SuiteMetrics, records []RunRecord) error {
 	verdictValue := 0.0
-	if verdict == VerdictOK {
+	if verdict == VerdictOK && suiteHealthy(m) {
 		verdictValue = 1
 	}
 	var latencyMs float64
@@ -118,7 +152,7 @@ func WritePrefixedTextfile(path, prefix string, verdict Verdict, m SuiteMetrics,
 		latencyMs = total / float64(len(records)) * 1000
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# HELP %s_ok The suite's verdict as a number: 1 = ran, 0 = not_run.\n", prefix)
+	fmt.Fprintf(&b, "# HELP %s_ok The suite's verdict as a number: 1 = ran and cleared the success floor, 0 = not_run or regressed.\n", prefix)
 	fmt.Fprintf(&b, "# TYPE %s_ok gauge\n", prefix)
 	fmt.Fprintf(&b, "%s_ok %g\n\n", prefix, verdictValue)
 	fmt.Fprintf(&b, "# HELP %s_runs Total task runs recorded.\n", prefix)
