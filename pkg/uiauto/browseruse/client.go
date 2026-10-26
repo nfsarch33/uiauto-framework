@@ -25,6 +25,12 @@ type RunRequest struct {
 	Model    string `json:"model,omitempty"`
 	BaseURL  string `json:"base_url,omitempty"`
 	Headless *bool  `json:"headless,omitempty"`
+	// TimeoutS is the budget the executor should bound its own run by, in
+	// seconds. The caller knows how long it will wait; the executor needs
+	// that number to stop a hanging run and answer with a bounded error
+	// (and the page history it saw) instead of letting the caller's
+	// deadline fire with no body at all.
+	TimeoutS int `json:"timeout_s,omitempty"`
 }
 
 // RunResult is the run history the service returns. FinalResult empty
@@ -80,10 +86,23 @@ func (c *Client) doer() Doer {
 	return &http.Client{Timeout: 5 * time.Minute}
 }
 
+// replyMargin is the time the answer needs to travel back: the service
+// must stop its run before the caller's deadline, not on it.
+const replyMargin = 10 * time.Second
+
 // Run executes one task and returns its history. An HTTP error, a decode
 // error, or ok=false in the payload are all errors — a task that failed
 // inside the lane must never read as a succeeded one.
+
 func (c *Client) Run(ctx context.Context, req RunRequest) (RunResult, error) {
+	// The executor bounds its own run by what the caller is willing to
+	// wait, so a hang ends in a bounded error with the pages the run
+	// saw instead of a transport deadline with no body at all.
+	if dl, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(dl) - replyMargin; remaining > 0 {
+			req.TimeoutS = int(remaining.Seconds())
+		}
+	}
 	body, err := json.Marshal(req)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("browseruse: marshal request: %w", err)

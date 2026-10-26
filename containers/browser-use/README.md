@@ -12,7 +12,7 @@ lives in `pkg/uiauto/browseruse`; the operator surface is
 
 | Route | Method | Payload |
 |---|---|---|
-| `/run` | POST | `{"task": ..., "url"?: ..., "max_steps"?: 25, "cdp_url"?: ..., "model"?: ..., "base_url"?: ...}` → run result |
+| `/run` | POST | `{"task": ..., "url"?: ..., "max_steps"?: 25, "cdp_url"?: ..., "model"?: ..., "base_url"?: ..., "timeout_s"?: 150}` → run result |
 | `/healthz` | GET | `{"ok": true, "browser_use": "<version>", "cdp_configured": bool}` |
 
 ## Configuration (environment)
@@ -24,6 +24,7 @@ lives in `pkg/uiauto/browseruse`; the operator surface is
 | `BU_LLM_MODEL` | Model name for that endpoint. |
 | `BU_LLM_API_KEY_ENV` | Name of the env var holding the API key (default `BROWSER_USE_API_KEY`). |
 | `BU_ALLOW_REQUEST_ENDPOINTS` | `=1` to honour per-request `cdp_url`/`base_url`/`model`. Default OFF: those fields are refused with 403. |
+| `BU_RUN_TIMEOUT_S` | The service's own bound on one run, in seconds (default 150). A run that outruns it is stopped and answered with a bounded error that still carries the pages it saw. |
 | `BU_LLM_AGENT_HEADER` / `BU_LLM_AGENT_ID` | Caller-identity header sent with every LLM request (default `X-Helixon-Agent: browser-use`). Gateways that gate per agent otherwise sniff the OpenAI client's User-Agent and may classify this lane as a different tool. An empty id sends no header. |
 
 ## Security posture

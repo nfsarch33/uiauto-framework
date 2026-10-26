@@ -5,6 +5,7 @@ regression after the done-shape residual survived two nights).
 Run: python3 -m unittest discover -s containers/browser-use -p 'server_test.py'
 """
 
+import asyncio
 import json
 import unittest
 from types import SimpleNamespace
@@ -368,3 +369,60 @@ class ReviewerRound1DeclaredFields(unittest.TestCase):
         )
         self.assertEqual(got["action"][0]["done"]["files_to_display"], ["/a.png"])
         self.assertEqual(got["action"][0]["done"]["text"], "chart attached")
+
+
+class _FakeBrowserKwargs:
+    """A browser stand-in that takes the constructor keywords the service
+    passes (the module stub takes none)."""
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
+class _HangingAgent:
+    """An agent whose run never returns - the shape of a wedged LLM call or a
+    CDP target that stopped answering."""
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.history = SimpleNamespace(urls=lambda: ["https://example.com/", "about:blank"])
+
+    async def run(self):
+        await asyncio.sleep(3600)
+
+
+class BoundedRun(unittest.TestCase):
+    """A run that outruns its budget must answer with a bounded error that
+    still carries the pages the agent saw. A caller's deadline firing leaves
+    no body at all, and a run with no body has no page history to grade."""
+
+    def _bounded_run(self, request):
+        saved = (server.Agent, server.Browser, server.CDP_URL, server.LLM_BASE_URL, server.LLM_MODEL)
+        server.Agent = _HangingAgent
+        server.Browser = _FakeBrowserKwargs
+        server.CDP_URL = "http://127.0.0.1:9222"
+        server.LLM_BASE_URL = "http://llm.test"
+        server.LLM_MODEL = "test-model"
+        try:
+            # The row's own bound: without the service's, the call hangs and
+            # the suite hangs with it.
+            return asyncio.run(asyncio.wait_for(server._run(request), timeout=5))
+        finally:
+            (server.Agent, server.Browser, server.CDP_URL,
+             server.LLM_BASE_URL, server.LLM_MODEL) = saved
+
+    def test_a_hanging_run_answers_with_a_bounded_error_and_the_page_history(self):
+        result = self._bounded_run({"task": "t", "timeout_s": 1})
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("budget" in e for e in result["errors"]), result["errors"])
+        self.assertEqual(result["urls"], ["https://example.com/"])
+
+    def test_the_service_bounds_a_run_that_names_no_budget(self):
+        saved = getattr(server, "RUN_TIMEOUT_S", 150)
+        server.RUN_TIMEOUT_S = 1
+        try:
+            result = self._bounded_run({"task": "t"})
+        finally:
+            server.RUN_TIMEOUT_S = saved
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("budget" in e for e in result["errors"]), result["errors"])

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -210,5 +211,47 @@ func TestLayaDecideDurationReachesCaller(t *testing.T) {
 	}
 	if rec.DurationSec < 0.02 {
 		t.Fatalf("decide duration never reached the caller: got %v, want the 20ms service call measured", rec.DurationSec)
+	}
+}
+
+// TestBrowserUseExecutorKeepsHistoryOnALaneFailure: a bounded executor error
+// that carries the page history must keep it on the record. A history
+// dropped here turns every bounded failure into "no page history" - a
+// violation nobody can act on, and one that hides the pages that were
+// really visited.
+func TestBrowserUseExecutorKeepsHistoryOnALaneFailure(t *testing.T) {
+	svc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":false,"errors":["run exceeded the 150s budget"],"steps":2,"urls":["https://example.com/"],"urls_visited":1}`))
+	}))
+	defer svc.Close()
+	rec := (&BrowserUseExecutor{ServiceURL: svc.URL}).Run(context.Background(), Scenario{ID: "s4", Task: "t"}, 1)
+	if rec.OK {
+		t.Fatalf("lane failure must not be OK: %+v", rec)
+	}
+	if len(rec.URLs) != 1 || rec.URLs[0] != "https://example.com/" {
+		t.Fatalf("page history dropped on a failed run: %+v", rec)
+	}
+}
+
+// TestBoundedExecutorFailureIsGradedOnThePagesItVisited: the allowlist
+// check grades the pages that were visited. A run that failed on the
+// executor's own bound but reported its history must not be turned into a
+// "no page history" violation - that shape says "went somewhere unknown"
+// when the service actually said where it went.
+func TestBoundedExecutorFailureIsGradedOnThePagesItVisited(t *testing.T) {
+	svc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":false,"errors":["run exceeded the 150s budget"],"steps":2,"urls":["https://example.com/"],"urls_visited":1}`))
+	}))
+	defer svc.Close()
+	sc := Scenario{ID: "s5", Task: "t", URL: "https://example.com/", AllowedHosts: []string{"example.com"}}
+	rec := (&BrowserUseExecutor{ServiceURL: svc.URL}).Run(context.Background(), sc, 1)
+	applyHostAllowlist(&rec, sc.AllowedHosts)
+	for _, e := range rec.Errors {
+		if strings.HasPrefix(e, "allowlist_violation:") {
+			t.Fatalf("a bounded failure with in-scope history must not read as a violation: %v", rec.Errors)
+		}
+	}
+	if len(rec.Errors) == 0 {
+		t.Fatal("the bounded failure must stay on the record")
 	}
 }

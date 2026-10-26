@@ -1,7 +1,8 @@
 """HTTP executor service for the browser-use container.
 
 POST /run     {"task": ..., "url": ..., "max_steps": ..., "cdp_url": ...,
-               "model": ..., "base_url": ..., "headless": ...} -> run result
+               "model": ..., "base_url": ..., "headless": ...,
+               "timeout_s": ...} -> run result
 GET  /healthz -> {"ok": <the attached browser answered>, "browser_use": "<version>",
                   "cdp_configured": bool, "cdp_reachable": bool}
 
@@ -33,7 +34,8 @@ BU_LLM_MODEL, BU_LLM_API_KEY_ENV (name of the env var holding the key;
 default BROWSER_USE_API_KEY), BU_ALLOW_REQUEST_ENDPOINTS (=1 to allow
 per-request endpoint overrides), BU_LLM_AGENT_HEADER / BU_LLM_AGENT_ID
 (caller-identity header sent to the LLM endpoint; default
-X-Helixon-Agent: browser-use; empty id disables it).
+X-Helixon-Agent: browser-use; empty id disables it),
+BU_RUN_TIMEOUT_S (the service's own bound on one run; default 150).
 """
 import asyncio
 import atexit
@@ -68,6 +70,14 @@ LLM_AGENT_HEADER = os.environ.get("BU_LLM_AGENT_HEADER", "X-Helixon-Agent")
 LLM_AGENT_ID = os.environ.get("BU_LLM_AGENT_ID", "browser-use")
 MAX_BODY_BYTES = 1 << 20
 MAX_STEPS_LIMIT = 200
+# The service's own bound on one run. A run that hangs (a wedged LLM
+# call, a CDP target that stopped answering) must not hold the request
+# open until the caller's deadline: the caller then gets no body at all,
+# and a run with no body has no page history to grade.
+try:
+    RUN_TIMEOUT_S = float(os.environ.get("BU_RUN_TIMEOUT_S", "150"))
+except (TypeError, ValueError):
+    RUN_TIMEOUT_S = 150.0
 # The nightly failure class (AgentOutput "Invalid JSON"): the model
 # prefixes prose to the JSON object the library parses, and on the
 # correction retry packs the final message into a forbidden `input`
@@ -426,6 +436,38 @@ def _distinct_urls(history):
     return urls
 
 
+def _resolve_run_timeout(req):
+    """The budget for one run: the caller's, when it names one, capped by
+    the service's own. The caller knows how long it will wait; the cap keeps
+    a request without a budget from holding the thread open."""
+    requested = req.get("timeout_s")
+    try:
+        requested = float(requested)
+    except (TypeError, ValueError):
+        requested = 0.0
+    if requested <= 0:
+        return RUN_TIMEOUT_S
+    return min(requested, RUN_TIMEOUT_S)
+
+
+def _bounded_failure(agent, budget, started):
+    """The answer when a run outruns its budget: a bounded error that
+    still carries the pages the agent saw, so the caller can grade the
+    navigation that did happen instead of finding an empty history."""
+    history = getattr(agent, "history", None)
+    urls = _distinct_urls(history)
+    return {
+        "ok": False,
+        "final_result": "",
+        "steps": len(_maybe_call(history, "agent_steps", []) or []),
+        "duration_s": round(time.monotonic() - started, 3),
+        "errors": [f"run exceeded the {budget:g}s budget and was stopped"],
+        "urls": urls,
+        "urls_visited": len(urls),
+        "browser_use": BROWSER_USE_VERSION,
+    }
+
+
 async def _run(req):
     # Policy and validation FIRST, in order of cheapest and most
     # safety-relevant: nothing below may attach to a browser, open a
@@ -451,7 +493,14 @@ async def _run(req):
     agent = Agent(task=task + JSON_ONLY_SUFFIX, llm=llm, browser=browser, max_steps=max_steps, **agent_kwargs)
 
     started = time.monotonic()
-    history = await agent.run()
+    budget = _resolve_run_timeout(req)
+    try:
+        history = await asyncio.wait_for(agent.run(), timeout=budget)
+    except (asyncio.TimeoutError, TimeoutError):
+        # The run outran its budget: stop it here and answer with the
+        # pages it saw. Letting the caller's deadline fire instead
+        # leaves the caller with no body and no page history at all.
+        return _bounded_failure(agent, budget, started)
     # errors() can yield a bare None when the run was clean; only real
     # errors belong in the history a caller grades on.
     urls = _distinct_urls(history)
