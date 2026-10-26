@@ -48,14 +48,17 @@ func (e *BrowserUseExecutor) Run(ctx context.Context, sc Scenario, attempt int) 
 	})
 	rec.DurationSec = time.Since(started).Seconds()
 	rec.Steps = res.Steps
+	// The distinct page history rides on the record so plain and fusion
+	// rows are comparable in one report - and it stays on a failed run:
+	// the allowlist check grades the pages that were really visited, and
+	// a history dropped here turns every bounded executor failure into
+	// "no page history", a violation nobody can act on.
+	rec.URLs = res.URLs
 	rec.Errors = res.Errors
 	if err != nil {
 		rec.Errors = append(rec.Errors, err.Error())
 		return rec
 	}
-	// The distinct page history rides on the record so plain and fusion
-	// rows are comparable in one report.
-	rec.URLs = res.URLs
 	if sc.FinalContains != "" && !strings.Contains(res.FinalResult, sc.FinalContains) {
 		rec.Errors = append(rec.Errors, fmt.Sprintf("final result %q does not contain %q", res.FinalResult, sc.FinalContains))
 		return rec

@@ -123,6 +123,36 @@ func TestHealthProbesVersion(t *testing.T) {
 	}
 }
 
+// TestRunSendsTheCallersBudget: the executor must learn how long the caller
+// is willing to wait, so the service can bound its own run and answer with a
+// bounded error instead of letting the caller's deadline fire with no body.
+func TestRunSendsTheCallersBudget(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"ok":true,"final_result":"done","steps":1}`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	if _, err := New(srv.URL).Run(ctx, RunRequest{Task: "x"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	budget, ok := gotBody["timeout_s"].(float64)
+	if !ok {
+		t.Fatalf("request carries no timeout_s: %v", gotBody)
+	}
+	// The budget is the caller's deadline minus the reply margin: under the
+	// deadline, and close enough to it to be the caller's own budget.
+	if budget <= 0 || budget >= 90 {
+		t.Fatalf("timeout_s = %v, want the caller budget under its deadline", budget)
+	}
+	if budget < 70 {
+		t.Fatalf("timeout_s = %v, want the caller budget minus the reply margin", budget)
+	}
+}
+
 type blockDoer struct{}
 
 func (d *blockDoer) Do(req *http.Request) (*http.Response, error) {
