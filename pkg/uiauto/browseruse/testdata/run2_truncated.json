@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "final_result": "",
+  "steps": 7,
+  "duration_s": 323.202,
+  "errors": [
+    "Model output was truncated at max_completion_tokens=4096; the structured output is incomplete. Increase max_completion_tokens or request shorter output.",
+    "Model output was truncated at max_completion_tokens=4096; the structured output is incomplete. Increase max_completion_tokens or request shorter output.",
+    "Model output was truncated at max_completion_tokens=4096; the structured output is incomplete. Increase max_completion_tokens or request shorter output.",
+    "Model output was truncated at max_completion_tokens=4096; the structured output is incomplete. Increase max_completion_tokens or request shorter output.",
+    "Model output was truncated at max_completion_tokens=4096; the structured output is incomplete. Increase max_completion_tokens or request shorter output.",
+    "3 validation errors for AgentOutput\nsuccess\n  Extra inputs are not permitted [type=extra_forbidden, input_value=False, input_type=bool]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden\ntext\n  Extra inputs are not permitted [type=extra_forbidden, input_value=\"TASK FAILED - the requested panel step was not reached.\", input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden\naction\n  Field required [type=missing, input_value={'thinking': \"the agent f...was not reached.\"}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  ],
+  "urls": [
+    "https://panel.example.invalid/index.cgi?tree=advanced.ssh"
+  ],
+  "urls_visited": 1,
+  "browser_use": "0.13.10"
+}

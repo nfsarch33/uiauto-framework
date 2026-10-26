@@ -59,6 +59,17 @@ func (e *BrowserUseExecutor) Run(ctx context.Context, sc Scenario, attempt int) 
 		rec.Errors = append(rec.Errors, err.Error())
 		return rec
 	}
+	// A run the lane reports as ok can still have produced no structured
+	// outcome: the model output was truncated, or the final action never
+	// parsed as the executor's AgentOutput. Such a run is degraded and must
+	// not grade as a clean pass, whatever the lane's own ok flag reads. The
+	// final_contains check is skipped for it on purpose: its final result is
+	// prose the agent narrated, not an outcome it reached.
+	if degraded, reasons := browseruse.Degraded(res); degraded {
+		rec.Errors = append(rec.Errors, "degraded run: "+strings.Join(reasons, ", "))
+		rec.Evidence = map[string]any{"degraded": true, "degraded_reasons": reasons}
+		return rec
+	}
 	if sc.FinalContains != "" && !strings.Contains(res.FinalResult, sc.FinalContains) {
 		rec.Errors = append(rec.Errors, fmt.Sprintf("final result %q does not contain %q", res.FinalResult, sc.FinalContains))
 		return rec
