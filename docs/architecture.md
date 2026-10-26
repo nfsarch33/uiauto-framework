@@ -38,6 +38,8 @@ flowchart TB
 | `SelfHealer` | `pkg/uiauto/self_healer.go` | Coordinates fingerprint -> structural -> LLM -> VLM heal paths. |
 | `BrowserAgent` | `pkg/uiauto/browser.go` | chromedp implementation of the `Browser` interface. |
 | `omniparser.Client` | `pkg/uiauto/omniparser/client.go` | HTTP client for the OmniParser server. |
+| `browseruse.Client` | `pkg/uiauto/browseruse/client.go` | HTTP client for the browser-use executor lane; returns the run history (`ok`, `errors`, `steps`, page history). |
+| `browseruse.Degraded` | `pkg/uiauto/browseruse/degraded.go` | The degradation verdict: whether a run reached no structured outcome (truncated model output, or a final action that never parsed as `AgentOutput`). The verdict and the eval grading read this one function. |
 | `MiniWobExecutor` | `pkg/eval/miniwob.go` | Generic BrowserGym arena executor: agent loop over a python sidecar, programmatic rewards, name/cap/prompt/timeout overrides (serves the miniwob and webarena registries). |
 | arena sidecars | `eval/miniwob/sidecar.py`, `eval/webarena/sidecar.py` | Own the gym environment (browser + reward); shared HTTP contract and observation renderer (goal + bid axtree, decorative-first pruning). |
 

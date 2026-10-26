@@ -30,18 +30,26 @@ func browserUseRun(ctx context.Context, svcURL string, req browseruse.RunRequest
 	if err != nil {
 		return nil, err
 	}
+	// The lane's ok flag stays what the lane reported: a truncated run can
+	// still be ok=true, because the executor finished its loop. The
+	// degradation is a separate, machine-readable field, so a consumer can
+	// tell a clean pass from a run that reached no structured outcome.
+	degraded, degradedReasons := browseruse.Degraded(res)
+
 	ev := map[string]any{
-		"task":         req.Task,
-		"url":          req.URL,
-		"ok":           res.OK,
-		"final_result": res.FinalResult,
-		"steps":        res.Steps,
-		"duration_s":   res.DurationSec,
-		"errors":       res.Errors,
-		"urls_visited": res.URLsVisited,
-		"browser_use":  res.BrowserUse,
-		"service":      svcURL,
-		"captured":     time.Now().UTC().Format(time.RFC3339),
+		"task":             req.Task,
+		"url":              req.URL,
+		"ok":               res.OK,
+		"degraded":         degraded,
+		"degraded_reasons": degradedReasons,
+		"final_result":     res.FinalResult,
+		"steps":            res.Steps,
+		"duration_s":       res.DurationSec,
+		"errors":           res.Errors,
+		"urls_visited":     res.URLsVisited,
+		"browser_use":      res.BrowserUse,
+		"service":          svcURL,
+		"captured":         time.Now().UTC().Format(time.RFC3339),
 	}
 	if health != nil {
 		ev["service_health"] = health

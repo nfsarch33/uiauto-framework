@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,43 @@ func TestBrowserUseExecutorSurfacesLaneError(t *testing.T) {
 	if rec.OK {
 		t.Fatalf("lane failure must not be OK: %+v", rec)
 	}
+}
+
+// TestBrowserUseExecutorTreatsDegradedRunAsNotClean: the payload shape from
+// the live leg - truncated model output plus an AgentOutput validation error
+// - arrives with ok=true, and the scenario must still not grade as a clean
+// pass. The run reached no structured outcome, so the lane's own ok flag is
+// not the verdict.
+func TestBrowserUseExecutorTreatsDegradedRunAsNotClean(t *testing.T) {
+	body := readBrowserUseFixture(t, "../uiauto/browseruse/testdata/run3_invalid_agent_output.json")
+	svc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer svc.Close()
+	rec := (&BrowserUseExecutor{ServiceURL: svc.URL}).Run(context.Background(), Scenario{ID: "degraded", Task: "t"}, 1)
+	if rec.OK {
+		t.Fatalf("a degraded run must not be OK: %+v", rec)
+	}
+	found := false
+	for _, e := range rec.Errors {
+		if strings.Contains(e, "degraded") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("errors = %v, want a degraded reason", rec.Errors)
+	}
+}
+
+// readBrowserUseFixture reads a sanitized executor payload from the
+// browseruse package's testdata directory.
+func readBrowserUseFixture(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", path, err)
+	}
+	return raw
 }
 
 func TestLayaDecideExecutorRunWithInjectedCapture(t *testing.T) {
