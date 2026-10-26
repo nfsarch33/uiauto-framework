@@ -3,6 +3,7 @@ package uiauto
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/chromedp"
+	"github.com/chromedp/chromedp/remote"
 )
 
 // BrowserAgent provides a high-level Go interface around chromedp for UI testing.
@@ -23,6 +25,7 @@ type BrowserAgent struct {
 // NewBrowserAgent creates a new headless browser session.
 func NewBrowserAgent(headless bool) (*BrowserAgent, error) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		remote.WebSocket,
 		chromedp.Flag("headless", headless),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
@@ -51,6 +54,7 @@ func NewBrowserAgentWithChromePath(chromePath string, headless bool) (*BrowserAg
 		return NewBrowserAgent(headless)
 	}
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		remote.WebSocket,
 		chromedp.Flag("headless", headless),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
@@ -70,7 +74,7 @@ func NewBrowserAgentWithChromePath(chromePath string, headless bool) (*BrowserAg
 
 // ensureCDPTab guarantees at least one page target exists in the remote Chrome
 // before chromedp connects. Works around chromedp v0.14.2 regression (#1601)
-// where NewRemoteAllocator fails with -32000 when Chrome has zero tabs.
+// where the remote allocator fails with -32000 when Chrome has zero tabs.
 func ensureCDPTab(debugURL string) error {
 	httpURL := strings.TrimRight(debugURL, "/")
 	if strings.HasPrefix(httpURL, "ws://") {
@@ -129,16 +133,17 @@ func ensureCDPTab(debugURL string) error {
 
 // NewBrowserAgentWithRemote connects to an existing Chrome debug session.
 // Ensures at least one tab exists (workaround for chromedp v0.14.2 #1601),
-// then attaches via NewRemoteAllocator. Returns an error if unreachable.
+// then attaches via the remote allocator of the remote module. Returns an
+// error if unreachable.
 func NewBrowserAgentWithRemote(debugURL string) (*BrowserAgent, error) {
 	if err := ensureCDPTab(debugURL); err != nil {
 		return nil, fmt.Errorf("remote Chrome not ready: %w", err)
 	}
 
-	allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), debugURL)
+	allocCtx, allocCancel := remote.NewAllocator(context.Background(), debugURL)
 	ctx, cancel := chromedp.NewContext(allocCtx)
 
-	if err := chromedp.Run(ctx); err != nil {
+	if err := chromedp.Do(ctx); err != nil {
 		cancel()
 		allocCancel()
 		return nil, fmt.Errorf("failed to attach to remote Chrome: %w", err)
@@ -162,7 +167,7 @@ func (b *BrowserAgent) Close() {
 
 // Navigate goes to a URL and waits for the page to load.
 func (b *BrowserAgent) Navigate(url string) error {
-	return chromedp.Run(b.ctx,
+	return chromedp.Do(b.ctx,
 		chromedp.Navigate(url),
 		chromedp.Sleep(5*time.Second),
 	)
@@ -170,9 +175,7 @@ func (b *BrowserAgent) Navigate(url string) error {
 
 // CurrentURL returns the URL of the current page.
 func (b *BrowserAgent) CurrentURL() (string, error) {
-	var loc string
-	err := chromedp.Run(b.ctx, chromedp.Location(&loc))
-	return loc, err
+	return chromedp.Run(b.ctx, chromedp.Location())
 }
 
 // NavigateWithConfig navigates using caller-specified wait parameters.
@@ -184,14 +187,21 @@ func (b *BrowserAgent) NavigateWithConfig(url string, cfg WaitConfig) error {
 // CaptureDOM returns the outer HTML of the document root.
 func (b *BrowserAgent) CaptureDOM() (string, error) {
 	var html string
-	err := chromedp.Run(b.ctx,
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			node, err := dom.GetDocument().Do(ctx)
+	err := chromedp.Do(b.ctx,
+		chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
+			doc, err := chromedp.Call(ctx, dom.GetDocument, dom.GetDocumentParams{})
 			if err != nil {
 				return err
 			}
-			html, err = dom.GetOuterHTML().WithNodeID(node.NodeID).Do(ctx)
-			return err
+			if doc.Root == nil {
+				return errors.New("DOM.getDocument returned no root node")
+			}
+			outer, err := chromedp.Call(ctx, dom.GetOuterHTML, dom.GetOuterHTMLParams{NodeID: doc.Root.NodeID})
+			if err != nil {
+				return err
+			}
+			html = outer.OuterHTML
+			return nil
 		}),
 	)
 	return html, err
@@ -200,47 +210,43 @@ func (b *BrowserAgent) CaptureDOM() (string, error) {
 // SetViewport overrides the tab's viewport (CSS pixels) without
 // resizing a window — headless slide rendering at exact sizes.
 func (b *BrowserAgent) SetViewport(width, height int) error {
-	return chromedp.Run(b.ctx, chromedp.EmulateViewport(int64(width), int64(height)))
+	return chromedp.Do(b.ctx, chromedp.EmulateViewport(int64(width), int64(height)))
 }
 
 // CaptureScreenshot captures the current viewport of the attached tab.
 func (b *BrowserAgent) CaptureScreenshot() ([]byte, error) {
-	var buf []byte
-	err := chromedp.Run(b.ctx,
-		chromedp.CaptureScreenshot(&buf),
-	)
-	return buf, err
+	return chromedp.Run(b.ctx, chromedp.CaptureScreenshot())
 }
 
 // Click waits for an element to be ready and clicks it.
 func (b *BrowserAgent) Click(selector string) error {
 	ctx, cancel := context.WithTimeout(b.ctx, 15*time.Second)
 	defer cancel()
-	if err := chromedp.Run(ctx,
-		chromedp.WaitReady(selector, chromedp.ByQuery),
-		chromedp.Click(selector, chromedp.ByQuery),
+	if err := chromedp.Do(ctx,
+		chromedp.WaitReady(chromedp.CSS(selector)),
+		chromedp.Click(chromedp.CSS(selector)),
 	); err == nil {
 		return nil
 	}
-	return chromedp.Run(ctx, chromedp.Evaluate(fmt.Sprintf(`(() => {
+	return chromedp.Do(ctx, chromedp.Evaluate[chromedp.Void](fmt.Sprintf(`(() => {
 		const el = document.querySelector(%q);
 		if (!el) throw new Error("selector not found: %s");
 		el.scrollIntoView({block: "center", inline: "center"});
 		el.click();
 		return true;
-	})()`, selector, selector), nil))
+	})()`, selector, selector)))
 }
 
 // Type waits for an element to be ready, clears it, and types text.
 func (b *BrowserAgent) Type(selector, text string) error {
 	ctx, cancel := context.WithTimeout(b.ctx, 5*time.Second)
 	defer cancel()
-	if err := chromedp.Run(ctx,
-		chromedp.SetValue(selector, text, chromedp.ByQuery),
+	if err := chromedp.Do(ctx,
+		chromedp.SetValue(chromedp.CSS(selector), text),
 	); err == nil {
 		return nil
 	}
-	return chromedp.Run(ctx, chromedp.Evaluate(fmt.Sprintf(`(() => {
+	return chromedp.Do(ctx, chromedp.Evaluate[chromedp.Void](fmt.Sprintf(`(() => {
 		const el = document.querySelector(%q);
 		if (!el) throw new Error("selector not found: %s");
 		el.focus();
@@ -254,23 +260,39 @@ func (b *BrowserAgent) Type(selector, text string) error {
 		el.dispatchEvent(new Event("input", {bubbles: true}));
 		el.dispatchEvent(new Event("change", {bubbles: true}));
 		return true;
-	})()`, selector, selector, text, text), nil))
+	})()`, selector, selector, text, text)))
 }
 
 // Evaluate runs a JavaScript expression and stores the result.
+//
+// The generic action API takes the result type as a type parameter, so the
+// value travels as JSON and is decoded into res here. That keeps the
+// exported signature stable for every existing caller.
 func (b *BrowserAgent) Evaluate(expression string, res interface{}) error {
-	return chromedp.Run(b.ctx,
-		chromedp.Evaluate(expression, res),
-	)
+	raw, err := chromedp.Run(b.ctx, chromedp.Evaluate[[]byte](expression))
+	if err != nil {
+		return err
+	}
+	if res == nil {
+		return nil
+	}
+	if err := json.Unmarshal(raw, res); err != nil {
+		return fmt.Errorf("decode evaluate result into %T: %w", res, err)
+	}
+	return nil
 }
 
 // GetNodes returns all nodes matching the selector.
 func (b *BrowserAgent) GetNodes(selector string) ([]*cdp.Node, error) {
-	var nodes []*cdp.Node
-	err := chromedp.Run(b.ctx,
-		chromedp.Nodes(selector, &nodes, chromedp.ByQueryAll),
-	)
-	return nodes, err
+	nodes, err := chromedp.Run(b.ctx, chromedp.Nodes(chromedp.CSSAll(selector)))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*cdp.Node, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, n.Node)
+	}
+	return out, nil
 }
 
 // IsVisible reports whether the selector resolves to a visible element.
@@ -287,8 +309,8 @@ func (b *BrowserAgent) IsVisible(selector string) (bool, error) {
 		const r = el.getBoundingClientRect();
 		return r.width > 0 && r.height > 0;
 	})()`, selector)
-	var visible bool
-	if err := chromedp.Run(ctx, chromedp.Evaluate(expr, &visible)); err != nil {
+	visible, err := chromedp.Run(ctx, chromedp.Evaluate[bool](expr))
+	if err != nil {
 		return false, err
 	}
 	return visible, nil
@@ -307,8 +329,8 @@ func (b *BrowserAgent) IsVisible(selector string) (bool, error) {
 func (b *BrowserAgent) SwitchToFrame(selector string) (func(), error) {
 	ctx, cancel := context.WithTimeout(b.ctx, 5*time.Second)
 	defer cancel()
-	var nodes []*cdp.Node
-	if err := chromedp.Run(ctx, chromedp.Nodes(selector, &nodes, chromedp.ByQuery)); err != nil {
+	nodes, err := chromedp.Run(ctx, chromedp.Nodes(chromedp.CSS(selector)))
+	if err != nil {
 		return nil, fmt.Errorf("locate iframe %q: %w", selector, err)
 	}
 	if len(nodes) == 0 {
@@ -317,7 +339,7 @@ func (b *BrowserAgent) SwitchToFrame(selector string) (func(), error) {
 	iframeNode := nodes[0]
 	original := b.ctx
 	frameCtx, frameCancel := chromedp.NewContext(b.ctx)
-	if err := chromedp.Run(frameCtx, chromedp.ActionFunc(func(ctx context.Context) error {
+	if err := chromedp.Do(frameCtx, chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
 		// Iframes expose their content via FrameID; chromedp WithExecutorContext
 		// would let callers push commands inside. Here we simply hold the sub-
 		// context and let user actions run via the outer chromedp.Run path.
@@ -337,7 +359,7 @@ func (b *BrowserAgent) SwitchToFrame(selector string) (func(), error) {
 
 // NewBrowserAgentRemote connects to an existing Chrome instance via debug URL.
 func NewBrowserAgentRemote(ctx context.Context, chromeDebugURL string) (*BrowserAgent, error) {
-	allocCtx, allocCancel := chromedp.NewRemoteAllocator(ctx, chromeDebugURL)
+	allocCtx, allocCancel := remote.NewAllocator(ctx, chromeDebugURL)
 	taskCtx, taskCancel := chromedp.NewContext(allocCtx)
 
 	return &BrowserAgent{

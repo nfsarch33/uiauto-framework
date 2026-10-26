@@ -35,7 +35,7 @@ func TestPageWaiter_WaitForElement(t *testing.T) {
 	}
 	defer browser.Close()
 
-	if err := chromedp.Run(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
+	if err := chromedp.Do(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}
 
@@ -80,7 +80,7 @@ func TestPageWaiter_WaitForElementEnabled(t *testing.T) {
 	}
 	defer browser.Close()
 
-	if err := chromedp.Run(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
+	if err := chromedp.Do(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}
 
@@ -127,7 +127,7 @@ func TestPageWaiter_WaitForDOMStable(t *testing.T) {
 	}
 	defer browser.Close()
 
-	if err := chromedp.Run(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
+	if err := chromedp.Do(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}
 
@@ -178,7 +178,7 @@ func TestPageWaiter_WaitForNetworkIdle(t *testing.T) {
 	// Wait for network idle after navigating
 	waiter := NewPageWaiter(3*time.Second, WaitNetworkIdle)
 
-	if err := chromedp.Run(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
+	if err := chromedp.Do(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}
 
@@ -310,7 +310,7 @@ func TestPageWaiter_WaitForSPARouteChange(t *testing.T) {
 	}
 	defer browser.Close()
 
-	if err := chromedp.Run(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
+	if err := chromedp.Do(browser.ctx, chromedp.Navigate(ts.URL)); err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}
 

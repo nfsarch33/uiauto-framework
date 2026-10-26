@@ -97,24 +97,54 @@ func NewPageWaiterFromConfig(cfg WaitConfig) *PageWaiter {
 	}
 }
 
+// enableLifecycleEvents turns on the Page domain and its lifecycle events, so
+// the networkIdle signal can be observed. The typed cdproto exposes these
+// commands as values, so they run through Call inside a Func action.
+func enableLifecycleEvents(ctx context.Context) chromedp.Action[chromedp.Void] {
+	return chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
+		if _, err := chromedp.Call(ctx, page.Enable, page.EnableParams{}); err != nil {
+			return err
+		}
+		_, err := chromedp.Call(ctx, page.SetLifecycleEventsEnabled, page.SetLifecycleEventsEnabledParams{Enabled: true})
+		return err
+	})
+}
+
+// waitForNetworkIdleSignal subscribes to the lifecycle events of ctx and
+// closes the returned channel on the first networkIdle event.
+//
+// The typed cdproto delivers events through an iterator that subscribes when
+// it is created, so the subscription is in place before the navigation and no
+// networkIdle event is missed.
+func waitForNetworkIdleSignal(ctx context.Context) <-chan struct{} {
+	ch := make(chan struct{})
+	var once sync.Once
+
+	events := chromedp.Events(ctx, page.LifecycleEvent)
+	go func() {
+		for ev, err := range events {
+			if err != nil {
+				return
+			}
+			if ev.Name == "networkIdle" {
+				once.Do(func() { close(ch) })
+				return
+			}
+		}
+	}()
+
+	return ch
+}
+
 // PrepareNetworkIdleWait sets up the Chrome lifecycle listener and returns a
 // blocking function. Call this BEFORE navigation so the networkIdle event
 // cannot race past an unregistered listener.
 func (w *PageWaiter) PrepareNetworkIdleWait(ctx context.Context) (wait func() error, err error) {
-	if err := chromedp.Run(ctx, page.Enable(), page.SetLifecycleEventsEnabled(true)); err != nil {
+	if err := chromedp.Do(ctx, enableLifecycleEvents(ctx)); err != nil {
 		return nil, fmt.Errorf("enable lifecycle events: %w", err)
 	}
 
-	ch := make(chan struct{})
-	var once sync.Once
-
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
-		if lce, ok := ev.(*page.EventLifecycleEvent); ok {
-			if lce.Name == "networkIdle" {
-				once.Do(func() { close(ch) })
-			}
-		}
-	})
+	ch := waitForNetworkIdleSignal(ctx)
 
 	return func() error {
 		select {
@@ -164,7 +194,7 @@ func (w *PageWaiter) NavigateAndWaitV2(ctx context.Context, url string) ([]WaitR
 		waitNetIdle = fn
 	}
 
-	if err := chromedp.Run(ctx, chromedp.Navigate(url)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.Navigate(url)); err != nil {
 		w.recordMetrics(stratLabel, "error", time.Since(start))
 		return nil, fmt.Errorf("navigate to %s: %w", url, err)
 	}
@@ -295,7 +325,7 @@ func (w *PageWaiter) WaitForElement(ctx context.Context, sel string) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
-	return chromedp.Run(ctx, chromedp.WaitVisible(sel, chromedp.ByQuery))
+	return chromedp.Do(ctx, chromedp.WaitVisible(chromedp.CSS(sel)))
 }
 
 // WaitForElementEnabled waits for a CSS selector to be visible and not disabled.
@@ -307,7 +337,7 @@ func (w *PageWaiter) WaitForElementEnabled(ctx context.Context, sel string) erro
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
-	if err := chromedp.Run(ctx, chromedp.WaitVisible(sel, chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.WaitVisible(chromedp.CSS(sel))); err != nil {
 		return fmt.Errorf("wait for element visible %q: %w", sel, err)
 	}
 
@@ -325,8 +355,8 @@ func (w *PageWaiter) WaitForElementEnabled(ctx context.Context, sel string) erro
 		case <-ctx.Done():
 			return fmt.Errorf("element %q not enabled before timeout: %w", sel, ctx.Err())
 		case <-ticker.C:
-			var enabled bool
-			if err := chromedp.Run(ctx, chromedp.Evaluate(checkScript, &enabled)); err != nil {
+			enabled, err := chromedp.Run(ctx, chromedp.Evaluate[bool](checkScript))
+			if err != nil {
 				continue
 			}
 			if enabled {
@@ -345,36 +375,27 @@ func (w *PageWaiter) WaitForElementEnabled(ctx context.Context, sel string) erro
 // state. If so, we return immediately rather than hanging until context
 // timeout.
 func (w *PageWaiter) WaitForNetworkIdle(ctx context.Context) error {
-	if err := chromedp.Run(ctx, page.Enable(), page.SetLifecycleEventsEnabled(true)); err != nil {
+	if err := chromedp.Do(ctx, enableLifecycleEvents(ctx)); err != nil {
 		return err
 	}
 
 	// Pre-check: if document is already complete and no pending XHR/fetch,
 	// networkIdle has already passed -- return immediately.
-	var readyState string
-	if err := chromedp.Run(ctx, chromedp.Evaluate(`document.readyState`, &readyState)); err == nil {
+	readyState, err := chromedp.Run(ctx, chromedp.Evaluate[string](`document.readyState`))
+	if err == nil {
 		if readyState == "complete" {
-			var pending int64
 			checkPending := `(function(){try{return performance.getEntriesByType('resource').filter(e=>!e.responseEnd).length}catch(e){return 0}})()`
-			if err := chromedp.Run(ctx, chromedp.Evaluate(checkPending, &pending)); err == nil && pending == 0 {
+			pending, err := chromedp.Run(ctx, chromedp.Evaluate[int64](checkPending))
+			if err == nil && pending == 0 {
 				return nil
 			}
 		}
 	}
 
-	ch := make(chan struct{})
-	var once sync.Once
-
 	lctx, lcancel := context.WithCancel(ctx)
 	defer lcancel()
 
-	chromedp.ListenTarget(lctx, func(ev interface{}) {
-		if lce, ok := ev.(*page.EventLifecycleEvent); ok {
-			if lce.Name == "networkIdle" {
-				once.Do(func() { close(ch) })
-			}
-		}
-	})
+	ch := waitForNetworkIdleSignal(lctx)
 
 	select {
 	case <-ch:
@@ -389,7 +410,7 @@ func (w *PageWaiter) WaitForSPARouteChange(ctx context.Context, currentURL strin
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
-	err := chromedp.Run(ctx, chromedp.Poll(fmt.Sprintf("window.location.href !== '%s'", currentURL), nil))
+	_, err := chromedp.Run(ctx, chromedp.Poll[chromedp.Void](fmt.Sprintf("window.location.href !== '%s'", currentURL)))
 	if err != nil {
 		return fmt.Errorf("URL did not change: %w", err)
 	}
@@ -413,7 +434,7 @@ func (w *PageWaiter) WaitForDOMStable(ctx context.Context, stableFor time.Durati
 		})()
 	`
 
-	if err := chromedp.Run(ctx, chromedp.Evaluate(initScript, nil)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.Evaluate[chromedp.Void](initScript)); err != nil {
 		return fmt.Errorf("inject MutationObserver: %w", err)
 	}
 
@@ -430,8 +451,7 @@ func (w *PageWaiter) WaitForDOMStable(ctx context.Context, stableFor time.Durati
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			var currentMutations int
-			err := chromedp.Run(ctx, chromedp.Evaluate(readScript, &currentMutations))
+			currentMutations, err := chromedp.Run(ctx, chromedp.Evaluate[int](readScript))
 			if err != nil {
 				stableStart = time.Now()
 				continue
