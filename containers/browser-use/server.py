@@ -4,7 +4,8 @@ POST /run     {"task": ..., "url": ..., "max_steps": ..., "cdp_url": ...,
                "model": ..., "base_url": ..., "headless": ...,
                "timeout_s": ...} -> run result
 GET  /healthz -> {"ok": <the attached browser answered>, "browser_use": "<version>",
-                  "cdp_configured": bool, "cdp_reachable": bool}
+                  "cdp_configured": bool, "cdp_reachable": bool,
+                  "done_shape": {"seen": int, "coerced": int, "uncoerced": int}}
 
 Each request runs one browser-use Agent in its own event loop (the stdlib
 http server is threaded; Agent.run is async). The browser is NEVER
@@ -149,6 +150,54 @@ def _done_text(params):
 # a done() call is an undeclared extra the action model would reject.
 DONE_DECLARED_FIELDS = frozenset({"text", "success", "files_to_display"})
 
+# The actions the pinned library declares, with the fields each one
+# REQUIRES. Pinned to browser-use 0.13.10 -- the version the Containerfile
+# bakes -- and cross-checked against the installed library by the unit
+# suite, so a version bump that changes an action fails loudly instead of
+# leaving the coercion a field behind.
+#
+# A field the payload does not carry is what the action model rejects
+# ("Field required"). A field the payload carries under a different NAME
+# is the mismatch the models actually produce.
+ACTION_REQUIRED_FIELDS = {
+    "click": ("index",),
+    "close": ("tab_id",),
+    "done": ("text",),
+    "dropdown_options": ("index",),
+    "evaluate": ("code",),
+    "extract": ("query",),
+    "find_elements": ("selector",),
+    "find_text": ("text",),
+    "go_back": (),
+    "input": ("index", "text"),
+    "navigate": ("url",),
+    "read_file": ("file_name",),
+    "replace_file": ("file_name", "old_str", "new_str"),
+    "save_as_pdf": (),
+    "screenshot": (),
+    "scroll": (),
+    "search": ("query",),
+    "search_page": ("pattern",),
+    "select_dropdown": ("index", "text"),
+    "send_keys": ("keys",),
+    "switch": ("tab_id",),
+    "upload_file": ("index", "path"),
+    "wait": (),
+    "write_file": ("file_name", "content"),
+}
+
+# The field names the models emit where the action declares a different
+# one. Measured from the 2026-10-12 night run's validation errors: input
+# came back carrying `value`, extract carrying `prompt`, search_page
+# carrying `query`. The coercion renames the FIELD and never changes the
+# action the model chose -- search_page stays a page search, it does not
+# become search, which would drive the browser out to a search engine.
+ACTION_FIELD_ALIASES = {
+    "input": {"value": "text"},
+    "extract": {"prompt": "query"},
+    "search_page": {"query": "pattern"},
+}
+
 
 def _coerce_done(done):
     """One done() parameter dict, coerced. Returns None when there is
@@ -174,15 +223,108 @@ def _coerce_done(done):
     return out
 
 
+def _coerce_element(elem):
+    """One element of the model's action list.
+
+    Returns (element, changed, unfixed):
+      element  the element to put back into the list
+      changed  True when the element was rewritten
+      unfixed  True when the element is still a shape the library's
+               action model rejects and the coercion could not rewrite
+
+    The shapes handled here are the ones the 2026-10-12 night run
+    recorded: the action the model named, carrying the field under the
+    wrong name (input/value, extract/prompt, search_page/query), the done
+    payload without its `done` wrapper, and a bare string where the model
+    should have called done(). Every other element passes through
+    untouched, so the library's own validation stays the authority on
+    what is broken.
+    """
+    # A bare string where an action object belongs: the model answered
+    # with prose instead of an action. The action model rejects a
+    # non-object outright, and the honest reading of that prose is a
+    # done() whose text is the prose.
+    if isinstance(elem, str):
+        # The model answered with prose instead of an action. DoneAction
+        # declares `success` and it DEFAULTS TO TRUE, so a done() built
+        # without that field would end the run as a SUCCESS - the fail-open
+        # this coercion exists to prevent. The honest reading of prose is a
+        # done() that did not succeed.
+        return {"done": {"text": elem, "success": False}}, True, False
+    if not isinstance(elem, dict):
+        return elem, False, False
+
+    if "done" in elem:
+        done = elem["done"]
+        coerced = _coerce_done(done)
+        if coerced is None:
+            # A done() the coercion could not rewrite. A params dict that
+            # carries undeclared extras always collapses (the JSON
+            # fallback keeps the text non-empty), so the residual is the
+            # non-dict case: the action model rejects it and nothing here
+            # can save it. Counted, never silently dropped.
+            unfixed = not isinstance(done, dict) or any(
+                k not in DONE_DECLARED_FIELDS for k in done
+            )
+            return elem, False, unfixed
+        if coerced == done:
+            # The done() itself is clean, but a key beside it is an extra
+            # the action model rejects, and rewriting the done() alone
+            # cannot fix that.
+            return elem, False, len(elem) > 1
+        out = dict(elem)
+        out["done"] = coerced
+        return out, True, len(elem) > 1
+
+    if len(elem) != 1:
+        # More than one action in one element: the model expects one
+        # action per element and the action model rejects the extras.
+        # There is no safe way to pick a winner, so it is left alone and
+        # counted as unfixed.
+        return elem, False, True
+
+    name = next(iter(elem))
+    payload = elem[name]
+    if name not in ACTION_REQUIRED_FIELDS:
+        # The done payload without its wrapper: the model answered
+        # {"text": "..."} where it should have answered
+        # {"done": {"text": "..."}}.
+        if name == "text" and isinstance(payload, str):
+            # The same reasoning as the bare-string case above: the wrapper is
+            # added, but the action did not succeed and must not default to
+            # saying that it did.
+            return {"done": {"text": payload, "success": False}}, True, False
+        return elem, False, True
+    if not isinstance(payload, dict):
+        return elem, False, True
+    required = ACTION_REQUIRED_FIELDS[name]
+    if all(f in payload for f in required):
+        # Every field the action requires is there: the element is the
+        # shape the action model wants and is left exactly as it came.
+        return elem, False, False
+    out = dict(payload)
+    renamed = False
+    for wrong, right in ACTION_FIELD_ALIASES.get(name, {}).items():
+        if wrong in out and right not in out:
+            out[right] = out.pop(wrong)
+            renamed = True
+    if all(f in out for f in required):
+        return {name: out}, renamed, False
+    # The action still misses a field the coercion has no name for.
+    return elem, False, True
+
+
 def coerce_done_shape(content):
-    """Coerce done() action shapes inside a raw model completion. Only
-    the action list's done entries change, and only their UNDECLARED
-    extras collapse into text — the fields DoneAction declares (text,
-    success, files_to_display) pass through untouched, so an honest
+    """Coerce the action shapes the model gets wrong inside a raw model
+    completion. Only the action list changes. A done() keeps every field
+    DoneAction declares (text, success, files_to_display) and collapses
+    only its UNDECLARED extras into text, so an honest
     done(text, success=false) can never be rewritten into a validating
-    success. Unparseable text returns unchanged (the library's own
-    validation error is the honest result)."""
-    if '"done"' not in content:
+    success. An action the model named with the wrong FIELD name gets
+    that field renamed; the action itself is never swapped for another
+    one. Unparseable text returns unchanged (the library's own validation
+    error is the honest result)."""
+    if '"action"' not in content:
         return content
     try:
         parsed = json.loads(content)
@@ -192,25 +334,70 @@ def coerce_done_shape(content):
     if not isinstance(actions, list):
         return content
     changed = False
-    for elem in actions:
-        if not isinstance(elem, dict):
-            continue
-        done = elem.get("done")
-        if done is None:
-            continue
-        coerced = _coerce_done(done)
-        if coerced is None:
-            continue
-        if coerced == done:
-            continue
-        elem["done"] = coerced
-        changed = True
+    seen = coerced_count = uncoerced = 0
+    for index, elem in enumerate(actions):
+        seen += 1
+        fixed, elem_changed, unfixed = _coerce_element(elem)
+        if elem_changed:
+            actions[index] = fixed
+            coerced_count += 1
+            changed = True
+        if unfixed:
+            uncoerced += 1
+    DONE_SHAPE_COUNTER.record(seen=seen, coerced=coerced_count, uncoerced=uncoerced)
     if not changed:
         return content
     try:
         return json.dumps(parsed, ensure_ascii=False)
     except (TypeError, ValueError):
         return content
+
+
+# --- done-shape counter ---------------------------------------------------
+#
+# The coercion above is silent. A run that fired it looks exactly like a
+# run that did not, so the nightly read "5 of 30 records still log
+# DoneActionModel errors" out of a 30/30 pass and had no way to tell
+# whether the coercion had fixed those records or whether the errors
+# were still there. These three counters are that missing read:
+#
+#   seen      action elements the coercion inspected
+#   coerced   elements rewritten into a shape the action model accepts
+#   uncoerced elements that still fail the library's validation after the
+#             coercion ran -- the residual, and the only number that says
+#             work remains
+#
+# A plain in-process counter: no new dependency, and it rides the
+# existing /healthz body.
+
+
+class _DoneShapeCounter:
+    """Three counters for the done-shape coercion, safe for the
+    threaded server (the stdlib server is threaded, so two runs can
+    touch the counter at once)."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._seen = 0
+        self._coerced = 0
+        self._uncoerced = 0
+
+    def record(self, seen=0, coerced=0, uncoerced=0):
+        with self._lock:
+            self._seen += seen
+            self._coerced += coerced
+            self._uncoerced += uncoerced
+
+    def snapshot(self):
+        with self._lock:
+            return {
+                "seen": self._seen,
+                "coerced": self._coerced,
+                "uncoerced": self._uncoerced,
+            }
+
+
+DONE_SHAPE_COUNTER = _DoneShapeCounter()
 
 
 class _CoercingCompletions:
@@ -548,6 +735,7 @@ def _health_payload(cdp_url=None):
         "browser_use": BROWSER_USE_VERSION,
         "cdp_configured": bool(cdp_url),
         "cdp_reachable": reachable,
+        "done_shape": DONE_SHAPE_COUNTER.snapshot(),
     }
 
 
