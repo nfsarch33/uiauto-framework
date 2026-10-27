@@ -503,8 +503,10 @@ class ActionShapeCoercionRows(unittest.TestCase):
     The coercion renames the field and leaves the action alone.
     """
 
-    # The action elements the report recorded, and the shape each one
-    # coerces into. The index and the values are the ones the run used.
+    # Every action element the run recorded and the library rejected, and
+    # the shape each one coerces into. Ten of them, across the three
+    # element indices and the four values the run typed. The indices and
+    # the values are the ones the run used.
     REPORTED = (
         (
             {"input": {"index": 135, "value": "Test User"}},
@@ -525,6 +527,14 @@ class ActionShapeCoercionRows(unittest.TestCase):
         (
             {"input": {"index": 241, "value": "UIAuto Tester"}},
             {"input": {"index": 241, "text": "UIAuto Tester"}},
+        ),
+        (
+            {"input": {"index": 194, "value": "Test User"}},
+            {"input": {"index": 194, "text": "Test User"}},
+        ),
+        (
+            {"input": {"index": 241, "value": "Ada Lovelace"}},
+            {"input": {"index": 241, "text": "Ada Lovelace"}},
         ),
         (
             {"extract": {"prompt": "What is the main heading on this page?"}},
