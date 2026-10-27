@@ -4,7 +4,8 @@ POST /run     {"task": ..., "url": ..., "max_steps": ..., "cdp_url": ...,
                "model": ..., "base_url": ..., "headless": ...,
                "timeout_s": ...} -> run result
 GET  /healthz -> {"ok": <the attached browser answered>, "browser_use": "<version>",
-                  "cdp_configured": bool, "cdp_reachable": bool}
+                  "cdp_configured": bool, "cdp_reachable": bool,
+                  "done_shape": {"seen": int, "coerced": int, "uncoerced": int}}
 
 Each request runs one browser-use Agent in its own event loop (the stdlib
 http server is threaded; Agent.run is async). The browser is NEVER
@@ -192,25 +193,85 @@ def coerce_done_shape(content):
     if not isinstance(actions, list):
         return content
     changed = False
+    seen = coerced_count = uncoerced = 0
     for elem in actions:
         if not isinstance(elem, dict):
             continue
         done = elem.get("done")
         if done is None:
             continue
+        seen += 1
         coerced = _coerce_done(done)
         if coerced is None:
+            # A done() the coercion could not rewrite. A params dict that
+            # carries undeclared extras always collapses (the JSON
+            # fallback keeps the text non-empty), so the residual is the
+            # non-dict case: the action model rejects it and nothing here
+            # can save it. Counted, never silently dropped.
+            if not isinstance(done, dict) or any(
+                k not in DONE_DECLARED_FIELDS for k in done
+            ):
+                uncoerced += 1
             continue
         if coerced == done:
             continue
         elem["done"] = coerced
+        coerced_count += 1
         changed = True
+    DONE_SHAPE_COUNTER.record(seen=seen, coerced=coerced_count, uncoerced=uncoerced)
     if not changed:
         return content
     try:
         return json.dumps(parsed, ensure_ascii=False)
     except (TypeError, ValueError):
         return content
+
+
+# --- done-shape counter ---------------------------------------------------
+#
+# The coercion above is silent. A run that fired it looks exactly like a
+# run that did not, so the nightly read "5 of 30 records still log
+# DoneActionModel errors" out of a 30/30 pass and had no way to tell
+# whether the coercion had fixed those records or whether the errors
+# were still there. These three counters are that missing read:
+#
+#   seen      done() entries the coercion inspected
+#   coerced   entries rewritten into a shape the action model accepts
+#   uncoerced entries that carry an extra the coercion could NOT
+#             collapse -- the residual that still fails the library's
+#             validation, and the only number that says work remains
+#
+# A plain in-process counter: no new dependency, and it rides the
+# existing /healthz body.
+
+
+class _DoneShapeCounter:
+    """Three counters for the done-shape coercion, safe for the
+    threaded server (the stdlib server is threaded, so two runs can
+    touch the counter at once)."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._seen = 0
+        self._coerced = 0
+        self._uncoerced = 0
+
+    def record(self, seen=0, coerced=0, uncoerced=0):
+        with self._lock:
+            self._seen += seen
+            self._coerced += coerced
+            self._uncoerced += uncoerced
+
+    def snapshot(self):
+        with self._lock:
+            return {
+                "seen": self._seen,
+                "coerced": self._coerced,
+                "uncoerced": self._uncoerced,
+            }
+
+
+DONE_SHAPE_COUNTER = _DoneShapeCounter()
 
 
 class _CoercingCompletions:
@@ -548,6 +609,7 @@ def _health_payload(cdp_url=None):
         "browser_use": BROWSER_USE_VERSION,
         "cdp_configured": bool(cdp_url),
         "cdp_reachable": reachable,
+        "done_shape": DONE_SHAPE_COUNTER.snapshot(),
     }
 
 

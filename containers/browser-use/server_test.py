@@ -426,3 +426,69 @@ class BoundedRun(unittest.TestCase):
             server.RUN_TIMEOUT_S = saved
         self.assertFalse(result["ok"])
         self.assertTrue(any("budget" in e for e in result["errors"]), result["errors"])
+
+
+class DoneShapeCounterRows(unittest.TestCase):
+    """The done-shape coercion must be countable.
+
+    The coercion is silent: a run that fired it looks exactly like a run
+    that did not. The nightly read "5 of 30 records still log
+    DoneActionModel errors" out of a 30/30 pass and had no way to tell
+    whether the coercion had fixed those records or whether the errors
+    were still there. These counters are that missing read: the done()
+    shapes the coercion saw, the ones it rewrote, and the ones it could
+    not fix at all.
+    """
+
+    def _delta(self, fn):
+        before = server.DONE_SHAPE_COUNTER.snapshot()
+        fn()
+        after = server.DONE_SHAPE_COUNTER.snapshot()
+        return {k: after[k] - before[k] for k in after}
+
+    def test_a_nightly_shape_is_counted_as_coerced(self):
+        delta = self._delta(
+            lambda: server.coerce_done_shape(
+                '{"action": [{"done": {"input": {"index": 889, "value": "Ada Lovelace"}}}]}'
+            )
+        )
+        self.assertEqual(delta["seen"], 1)
+        self.assertEqual(delta["coerced"], 1)
+        self.assertEqual(delta["uncoerced"], 0)
+
+    def test_a_clean_done_is_seen_but_not_coerced(self):
+        delta = self._delta(
+            lambda: server.coerce_done_shape('{"action": [{"done": {"text": "ok"}}]}')
+        )
+        self.assertEqual(delta["seen"], 1)
+        self.assertEqual(delta["coerced"], 0)
+        self.assertEqual(delta["uncoerced"], 0)
+
+    def test_the_20261012_repro_shapes_are_accepted_and_counted(self):
+        # The three shapes the 2026-10-12 report recorded as
+        # "45 validation errors for AgentOutput action.0.DoneActionModel.*".
+        for payload in (
+            '{"action": [{"done": {"input": {"index": 889, "value": "Ada Lovelace"}}}]}',
+            '{"action": [{"done": {"search_page": {"query": "Example Domain"}}}]}',
+            '{"action": [{"done": {"extract": {"prompt": "What is the heading?"}}}]}',
+        ):
+            with self.subTest(payload=payload):
+                before = server.DONE_SHAPE_COUNTER.snapshot()
+                out = json.loads(server.coerce_done_shape(payload))
+                after = server.DONE_SHAPE_COUNTER.snapshot()
+                done = out["action"][0]["done"]
+                self.assertLessEqual(set(done.keys()), {"text", "success", "files_to_display"})
+                self.assertEqual(after["coerced"], before["coerced"] + 1)
+                self.assertEqual(after["uncoerced"], before["uncoerced"])
+
+    def test_a_done_the_coercion_cannot_fix_is_counted_as_uncoerced(self):
+        delta = self._delta(lambda: server.coerce_done_shape('{"action": [{"done": 7}]}'))
+        self.assertEqual(delta["seen"], 1)
+        self.assertEqual(delta["coerced"], 0)
+        self.assertEqual(delta["uncoerced"], 1)
+
+    def test_the_health_payload_carries_the_counter(self):
+        payload = server._health_payload("")
+        self.assertIn("done_shape", payload)
+        for key in ("seen", "coerced", "uncoerced"):
+            self.assertIsInstance(payload["done_shape"][key], int)
