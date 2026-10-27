@@ -245,7 +245,12 @@ def _coerce_element(elem):
     # non-object outright, and the honest reading of that prose is a
     # done() whose text is the prose.
     if isinstance(elem, str):
-        return {"done": {"text": elem}}, True, False
+        # The model answered with prose instead of an action. DoneAction
+        # declares `success` and it DEFAULTS TO TRUE, so a done() built
+        # without that field would end the run as a SUCCESS - the fail-open
+        # this coercion exists to prevent. The honest reading of prose is a
+        # done() that did not succeed.
+        return {"done": {"text": elem, "success": False}}, True, False
     if not isinstance(elem, dict):
         return elem, False, False
 
@@ -285,7 +290,10 @@ def _coerce_element(elem):
         # {"text": "..."} where it should have answered
         # {"done": {"text": "..."}}.
         if name == "text" and isinstance(payload, str):
-            return {"done": {"text": payload}}, True, False
+            # The same reasoning as the bare-string case above: the wrapper is
+            # added, but the action did not succeed and must not default to
+            # saying that it did.
+            return {"done": {"text": payload, "success": False}}, True, False
         return elem, False, True
     if not isinstance(payload, dict):
         return elem, False, True

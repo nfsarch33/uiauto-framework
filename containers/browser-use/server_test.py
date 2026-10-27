@@ -546,7 +546,10 @@ class ActionShapeCoercionRows(unittest.TestCase):
         ),
         (
             {"text": "Confirmed: The draft is published. DRAFT NOT LIVE"},
-            {"done": {"text": "Confirmed: The draft is published. DRAFT NOT LIVE"}},
+            # Prose the model wrote instead of an action: the wrapper is added and the
+            # action did NOT succeed, so success is stated false rather than left to
+            # DoneAction's default of true.
+            {"done": {"text": "Confirmed: The draft is published. DRAFT NOT LIVE", "success": False}},
         ),
     )
 
@@ -587,13 +590,16 @@ class ActionShapeCoercionRows(unittest.TestCase):
     def test_the_unwrapped_done_shape_is_wrapped(self):
         self.assertEqual(
             self._coerced({"text": "Confirmed: DRAFT NOT LIVE"}),
-            {"done": {"text": "Confirmed: DRAFT NOT LIVE"}},
+            # success=false: an unwrapped done() whose success is unstated would
+            # default to true and end the run as a success.
+            {"done": {"text": "Confirmed: DRAFT NOT LIVE", "success": False}},
         )
 
     def test_a_bare_string_action_becomes_a_done(self):
         self.assertEqual(
             self._coerced("click the submit button"),
-            {"done": {"text": "click the submit button"}},
+            # success=false, for the same reason: prose is not a success.
+            {"done": {"text": "click the submit button", "success": False}},
         )
 
     def test_a_clean_action_is_left_exactly_as_it_came(self):
@@ -726,3 +732,29 @@ class PinnedLibraryAgreement(unittest.TestCase):
             with self.subTest(element=element):
                 raw = json.dumps({"action": [element]})
                 model.model_validate_json(server.coerce_done_shape(raw))
+
+
+class CoercedProseIsNotASuccess(unittest.TestCase):
+    """Prose the model wrote instead of an action must not end the run as a
+    success.
+
+    The pinned library's DoneAction declares `success`, and it DEFAULTS to
+    true. A coercion that builds a done() without that field therefore turns
+    model prose ("DRAFT NOT LIVE") into a successful run - the fail-open the
+    coercion's own docstring says cannot happen. These rows assert that both
+    coerced prose shapes carry success=false.
+    """
+
+    def _done(self, raw):
+        got = json.loads(server.coerce_done_shape(raw))
+        return got["action"][0]["done"]
+
+    def test_a_bare_string_action_is_coerced_to_a_failed_done(self):
+        done = self._done('{"action": ["DRAFT NOT LIVE"]}')
+        self.assertEqual(done["text"], "DRAFT NOT LIVE")
+        self.assertIs(done["success"], False)
+
+    def test_an_unwrapped_text_action_is_coerced_to_a_failed_done(self):
+        done = self._done('{"action": [{"text": "DRAFT NOT LIVE"}]}')
+        self.assertEqual(done["text"], "DRAFT NOT LIVE")
+        self.assertIs(done["success"], False)
