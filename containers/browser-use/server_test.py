@@ -492,3 +492,227 @@ class DoneShapeCounterRows(unittest.TestCase):
         self.assertIn("done_shape", payload)
         for key in ("seen", "coerced", "uncoerced"):
             self.assertIsInstance(payload["done_shape"][key], int)
+
+
+class ActionShapeCoercionRows(unittest.TestCase):
+    """The action shapes the 2026-10-12 night run recorded, coerced.
+
+    The night run's validation errors hold the failing action elements as
+    library's own validation error reports them: an action the model
+    named, carrying the field under a name that action does not declare.
+    The coercion renames the field and leaves the action alone.
+    """
+
+    # The action elements the report recorded, and the shape each one
+    # coerces into. The index and the values are the ones the run used.
+    REPORTED = (
+        (
+            {"input": {"index": 135, "value": "Test User"}},
+            {"input": {"index": 135, "text": "Test User"}},
+        ),
+        (
+            {"input": {"index": 194, "value": "Ada Lovelace"}},
+            {"input": {"index": 194, "text": "Ada Lovelace"}},
+        ),
+        (
+            {"input": {"index": 194, "value": "Ada Lovelace", "submit": False}},
+            {"input": {"index": 194, "text": "Ada Lovelace", "submit": False}},
+        ),
+        (
+            {"input": {"index": 241, "value": "Test User"}},
+            {"input": {"index": 241, "text": "Test User"}},
+        ),
+        (
+            {"input": {"index": 241, "value": "UIAuto Tester"}},
+            {"input": {"index": 241, "text": "UIAuto Tester"}},
+        ),
+        (
+            {"extract": {"prompt": "What is the main heading on this page?"}},
+            {"extract": {"query": "What is the main heading on this page?"}},
+        ),
+        (
+            {"search_page": {"query": "Example Domain"}},
+            {"search_page": {"pattern": "Example Domain"}},
+        ),
+        (
+            {"text": "Confirmed: The draft is published. DRAFT NOT LIVE"},
+            {"done": {"text": "Confirmed: The draft is published. DRAFT NOT LIVE"}},
+        ),
+    )
+
+    def _coerced(self, element):
+        raw = json.dumps({"action": [element]})
+        return json.loads(server.coerce_done_shape(raw))["action"][0]
+
+    def test_every_shape_the_report_recorded_is_coerced(self):
+        for element, expected in self.REPORTED:
+            with self.subTest(element=element):
+                self.assertEqual(self._coerced(element), expected)
+
+    def test_the_input_value_shape_is_renamed_to_text(self):
+        self.assertEqual(
+            self._coerced({"input": {"index": 194, "value": "Ada Lovelace"}}),
+            {"input": {"index": 194, "text": "Ada Lovelace"}},
+        )
+
+    def test_the_input_submit_shape_keeps_submit(self):
+        self.assertEqual(
+            self._coerced({"input": {"index": 194, "value": "Ada Lovelace", "submit": False}}),
+            {"input": {"index": 194, "text": "Ada Lovelace", "submit": False}},
+        )
+
+    def test_the_extract_prompt_shape_is_renamed_to_query(self):
+        self.assertEqual(
+            self._coerced({"extract": {"prompt": "What is the heading?"}}),
+            {"extract": {"query": "What is the heading?"}},
+        )
+
+    def test_the_search_page_query_shape_stays_a_page_search(self):
+        got = self._coerced({"search_page": {"query": "Example Domain"}})
+        self.assertEqual(got, {"search_page": {"pattern": "Example Domain"}})
+        # The action the model chose is not swapped for another one: a web
+        # search would drive the browser out to a search engine.
+        self.assertNotIn("search", got)
+
+    def test_the_unwrapped_done_shape_is_wrapped(self):
+        self.assertEqual(
+            self._coerced({"text": "Confirmed: DRAFT NOT LIVE"}),
+            {"done": {"text": "Confirmed: DRAFT NOT LIVE"}},
+        )
+
+    def test_a_bare_string_action_becomes_a_done(self):
+        self.assertEqual(
+            self._coerced("click the submit button"),
+            {"done": {"text": "click the submit button"}},
+        )
+
+    def test_a_clean_action_is_left_exactly_as_it_came(self):
+        for element in (
+            {"click": {"index": 5}},
+            {"search": {"query": "Example Domain"}},
+            {"search_page": {"pattern": "Example Domain"}},
+            {"screenshot": {}},
+            {"done": {"text": "ok"}},
+        ):
+            with self.subTest(element=element):
+                raw = json.dumps({"action": [element]})
+                self.assertEqual(server.coerce_done_shape(raw), raw)
+
+    def test_an_action_missing_a_field_the_coercion_cannot_name_is_left_alone(self):
+        raw = json.dumps({"action": [{"input": {"index": 5}}]})
+        self.assertEqual(server.coerce_done_shape(raw), raw)
+
+
+class ActionShapeCounterRows(unittest.TestCase):
+    """The shape coercion must be countable.
+
+    The coercion is silent: a run that fired it looks exactly like a run
+    that did not, so a nightly reading "5 of 30 records still log
+    DoneActionModel errors" could not tell whether the coercion had fixed
+    those records or whether the errors were still there. The counter
+    covers every action element the coercion inspects, so a shape the
+    coercion fixed and a shape it could not fix are two different
+    numbers.
+    """
+
+    def _delta(self, fn):
+        before = server.DONE_SHAPE_COUNTER.snapshot()
+        fn()
+        after = server.DONE_SHAPE_COUNTER.snapshot()
+        return {k: after[k] - before[k] for k in after}
+
+    def test_a_coerced_shape_is_counted_as_coerced(self):
+        delta = self._delta(
+            lambda: server.coerce_done_shape('{"action": [{"input": {"index": 1, "value": "x"}}]}')
+        )
+        self.assertEqual(delta["seen"], 1)
+        self.assertEqual(delta["coerced"], 1)
+        self.assertEqual(delta["uncoerced"], 0)
+
+    def test_an_action_the_coercion_cannot_fix_is_counted_as_uncoerced(self):
+        delta = self._delta(
+            lambda: server.coerce_done_shape('{"action": [{"not_an_action": {}}]}')
+        )
+        self.assertEqual(delta["seen"], 1)
+        self.assertEqual(delta["coerced"], 0)
+        self.assertEqual(delta["uncoerced"], 1)
+
+    def test_the_counter_counts_every_action_element_it_inspects(self):
+        delta = self._delta(
+            lambda: server.coerce_done_shape(
+                '{"action": [{"click": {"index": 5}}, {"screenshot": {}}]}'
+            )
+        )
+        self.assertEqual(delta["seen"], 2)
+        self.assertEqual(delta["coerced"], 0)
+        self.assertEqual(delta["uncoerced"], 0)
+
+
+class PinnedLibraryAgreement(unittest.TestCase):
+    """The action table and the coerced shapes must agree with the
+    pinned library itself.
+
+    These rows need browser_use importable. Where it is not, they skip
+    -- and the PR body carries the run that did have it.
+    """
+
+    def _real_library(self):
+        """Import the real browser_use, with the stub put back after."""
+        stub = sys.modules.get("browser_use")
+        for name in [
+            m for m in list(sys.modules) if m == "browser_use" or m.startswith("browser_use.")
+        ]:
+            del sys.modules[name]
+        try:
+            from browser_use.tools.service import Tools
+        except Exception as exc:  # pragma: no cover - the dev host has no browser_use
+            sys.modules["browser_use"] = stub
+            self.skipTest("browser_use is not importable here: %s" % exc)
+
+        def restore():
+            for name in [
+                m for m in list(sys.modules) if m == "browser_use" or m.startswith("browser_use.")
+            ]:
+                del sys.modules[name]
+            sys.modules["browser_use"] = stub
+
+        return Tools, restore
+
+    def test_the_action_table_matches_the_installed_library(self):
+        Tools, restore = self._real_library()
+        try:
+            registry = Tools().registry
+            declared = {
+                name: frozenset(
+                    field
+                    for field, info in action.param_model.model_fields.items()
+                    if info.is_required()
+                )
+                for name, action in registry.registry.actions.items()
+            }
+        finally:
+            restore()
+        self.assertEqual(
+            {name: frozenset(fields) for name, fields in server.ACTION_REQUIRED_FIELDS.items()},
+            declared,
+        )
+
+    def test_the_coerced_shapes_validate_against_the_installed_library(self):
+        Tools, restore = self._real_library()
+        try:
+            from browser_use.agent.views import AgentOutput
+
+            model = AgentOutput.type_with_custom_actions(Tools().registry.create_action_model())
+        finally:
+            restore()
+        for element in (
+            {"input": {"index": 194, "value": "Ada Lovelace"}},
+            {"input": {"index": 194, "value": "Ada Lovelace", "submit": False}},
+            {"extract": {"prompt": "What is the main heading on this page?"}},
+            {"search_page": {"query": "Example Domain"}},
+            {"text": "Confirmed: The draft is published. DRAFT NOT LIVE"},
+            "click the submit button",
+        ):
+            with self.subTest(element=element):
+                raw = json.dumps({"action": [element]})
+                model.model_validate_json(server.coerce_done_shape(raw))
