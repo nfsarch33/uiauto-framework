@@ -57,6 +57,10 @@ func evalCmd() *cobra.Command {
 					"browser-use":           &eval.BrowserUseExecutor{ServiceURL: browserUseURL},
 					eval.FusionExecutorName: eval.NewFusionExecutor(browserUseURL, omniParserURL, chromeDebug, fusionThreshold),
 					"laya-decide":           &eval.LayaDecideExecutor{ServiceURL: layaURL, ChromeDebug: chromeDebug},
+					// The 680c listing verification: open the live listing,
+					// check title/price/image count/stock against the record,
+					// PASS or FAIL with a screenshot path in the ledger row.
+					"listing-verify": &eval.ListingVerifyExecutor{ChromeDebug: chromeDebug, ScreenshotDir: filepath.Join(outDir, "screenshots")},
 					// BrowserGym arena rung (MiniWoB++ first): the sidecar owns
 					// the gym, the LLM endpoint comes from the environment so
 					// nothing host-specific is baked into the binary.
