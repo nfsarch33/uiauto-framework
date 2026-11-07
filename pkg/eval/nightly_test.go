@@ -363,7 +363,7 @@ func TestNightlySuiteFileLoads(t *testing.T) {
 	// Mutant this kills: the suite YAML malformed (a scenario lost its
 	// end-state assertion or allowlist) — validation counts catch it.
 	// 11 = the ten browser-use fixtures + the listing-verify scenario
-	// (the 680c verification wired into the nightly, v18960-686).
+	// (the published-listing verification wired into the nightly).
 	if len(s.Scenarios) != 11 {
 		t.Fatalf("scenarios = %d, want 11", len(s.Scenarios))
 	}

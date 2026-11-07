@@ -2,20 +2,17 @@ package eval
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
-// The 680c verification (done by uiauto, never again by hand): a published
-// listing is opened, title/price/image count/stock are checked against the
-// record, and the row is PASS or FAIL naming the mismatch — with a
-// screenshot path, never a silent pass.
+// The published-listing verification: a published listing is opened,
+// title/price/image count/stock are checked against the record, and the row
+// is PASS or FAIL naming the mismatch — with a screenshot path, never a
+// silent pass.
 
 const listingFixtureHTML = `<!doctype html>
 <html><head><title>Aluminium Water Bottle — Store (fixture)</title>
@@ -81,8 +78,8 @@ func TestListingVerifyRunPassesAndCarriesTheRow(t *testing.T) {
 	dir := t.TempDir()
 	e := &ListingVerifyExecutor{Client: srv.Client(), ScreenshotDir: dir}
 	rec := e.Run(context.Background(), Scenario{
-		ID:  "listing-verify-fixture",
-		URL: srv.URL,
+		ID:     "listing-verify-fixture",
+		URL:    srv.URL,
 		Verify: &ListingSpec{Title: "Aluminium Water Bottle", Price: "29.00", ImageCount: 2, Stock: "in_stock"},
 	}, 1)
 	if !rec.OK {
@@ -103,8 +100,8 @@ func TestListingVerifyRunFailsNamingTheMismatch(t *testing.T) {
 	defer srv.Close()
 	e := &ListingVerifyExecutor{Client: srv.Client(), ScreenshotDir: t.TempDir()}
 	rec := e.Run(context.Background(), Scenario{
-		ID:  "listing-verify-fixture",
-		URL: srv.URL,
+		ID:     "listing-verify-fixture",
+		URL:    srv.URL,
 		Verify: &ListingSpec{Title: "Aluminium Water Bottle", Price: "31.00", ImageCount: 2, Stock: "in_stock"},
 	}, 1)
 	if rec.OK {
@@ -142,13 +139,15 @@ func TestListingVerifyTimeoutIsAFailNeverASilentPass(t *testing.T) {
 	}
 }
 
-func TestListingVerifyScreenshotWrittenToDisk(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "shot.png")
-	if err := os.WriteFile(p, []byte("png"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(p); err != nil && !errors.Is(err, os.ErrNotExist) {
-		t.Fatal(err)
+// rev373 finding 3: the screenshot path is exercised through screenshot()
+// itself — a cancelled context returns the NAMED unavailable string, never a
+// silent empty path (the real capture is proven by the live nightly rows).
+func TestListingVerifyScreenshotCancelledContextIsNamedUnavailable(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	e := &ListingVerifyExecutor{ScreenshotDir: t.TempDir()}
+	shot := e.screenshot(ctx, Scenario{ID: "listing-verify-ctx", URL: "http://127.0.0.1:1/"}, 1)
+	if !strings.HasPrefix(shot, "unavailable: ") {
+		t.Fatalf("a cancelled context must return the named unavailable string, got %q", shot)
 	}
 }

@@ -95,7 +95,7 @@ scenarios:
       error_visible:
         true: true
 
-  # The 680c verification (686): open the LIVE listing after publish and
+  # The published-listing verification: open the LIVE listing after publish and
   # check title, price, image count and stock against the record. The row
   # is PASS with all four matched or FAIL naming the mismatch, and carries
   # the screenshot path — never a silent pass. A page that times out is a

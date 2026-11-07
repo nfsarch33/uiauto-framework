@@ -1,7 +1,7 @@
 package eval
 
-// The listing-verify executor: the 680c verification, done by uiauto
-// instead of by hand. After publish, a run opens the live listing, checks
+// The listing-verify executor: the published-listing verification.
+// After publish, a run opens the live listing, checks
 // title, price, image count and stock against the record, and writes a
 // PASS or FAIL row with a screenshot path into the nightly ledger — never
 // a silent pass. The four fields come from the page's schema.org
@@ -53,7 +53,7 @@ type jsonldProduct struct {
 	Type   string `json:"@type"`
 	Name   string `json:"name"`
 	Offers *struct {
-		Price       string `json:"price"`
+		Price        string `json:"price"`
 		Availability string `json:"availability"`
 	} `json:"offers"`
 }
@@ -150,12 +150,14 @@ func (e *ListingVerifyExecutor) Run(ctx context.Context, sc Scenario, attempt in
 	}
 
 	body, err := e.fetch(ctx, sc.URL)
-	shot := e.screenshot(ctx, sc, attempt)
 	if err != nil {
+		// rev373 finding 4: a failed fetch must not navigate again — the
+		// screenshot is named unavailable and the runner moves on.
 		rec.Errors = append(rec.Errors, fmt.Sprintf("listing page: %v", err))
-		rec.Evidence = verdictEvidence("FAIL", sc.Verify, nil, shot)
+		rec.Evidence = verdictEvidence("FAIL", sc.Verify, nil, "unavailable: page fetch failed")
 		return rec
 	}
+	shot := e.screenshot(ctx, sc, attempt)
 	got, extractErrs := ExtractListing(body)
 	rec.Errors = append(rec.Errors, extractErrs...)
 	rec.Errors = append(rec.Errors, CompareListing(*sc.Verify, got)...)
@@ -170,7 +172,7 @@ func (e *ListingVerifyExecutor) Run(ctx context.Context, sc Scenario, attempt in
 
 func verdictEvidence(verdict string, want *ListingSpec, got *Listing, shot string) map[string]any {
 	ev := map[string]any{
-		"verdict":   verdict,
+		"verdict":    verdict,
 		"screenshot": shot,
 	}
 	if want != nil {
@@ -214,6 +216,9 @@ func (e *ListingVerifyExecutor) fetch(ctx context.Context, url string) (string, 
 // otherwise — the verdict never rides on the screenshot, and a missing one
 // is never silent.
 func (e *ListingVerifyExecutor) screenshot(ctx context.Context, sc Scenario, attempt int) string {
+	if err := ctx.Err(); err != nil {
+		return "unavailable: context: " + err.Error()
+	}
 	agent, err := e.attach()
 	if err != nil {
 		return "unavailable: " + err.Error()
@@ -221,6 +226,9 @@ func (e *ListingVerifyExecutor) screenshot(ctx context.Context, sc Scenario, att
 	defer agent.Close()
 	if err := agent.Navigate(sc.URL); err != nil {
 		return "unavailable: navigate: " + err.Error()
+	}
+	if err := ctx.Err(); err != nil {
+		return "unavailable: context: " + err.Error()
 	}
 	png, err := agent.CaptureScreenshot()
 	if err != nil {
