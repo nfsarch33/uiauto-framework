@@ -94,3 +94,20 @@ scenarios:
         label: retry_payment
       error_visible:
         true: true
+
+  # The published-listing verification: open the LIVE listing after publish and
+  # check title, price, image count and stock against the record. The row
+  # is PASS with all four matched or FAIL naming the mismatch, and carries
+  # the screenshot path — never a silent pass. A page that times out is a
+  # FAIL with the reason. The fixture publishes the same schema.org
+  # Product+Offer record the publishgate writes, so the nightly measures
+  # the verification itself, not a hand-copied expectation.
+  - id: listing-verify-published
+    executor: listing-verify
+    url: http://localhost:8018/woo-admin/listing.html
+    timeout_s: 60
+    verify:
+      title: "Aluminium Water Bottle"
+      price: "29.00"
+      image_count: 2
+      stock: "in_stock"
