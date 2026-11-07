@@ -47,6 +47,11 @@ type Scenario struct {
 	// FinalContains: browser-use success additionally requires the final
 	// result to contain this substring.
 	FinalContains string `yaml:"final_contains"`
+	// Verify, when set, makes the scenario a listing verification: the
+	// publishgate record the live page is checked against (executor
+	// listing-verify). Title, price, image count and stock are compared
+	// field by field and every mismatch is named in the row.
+	Verify *ListingSpec `yaml:"verify"`
 	// AllowedHosts, when set, fences the run: every URL host in the
 	// lane's page history must be on the list. Two entry shapes: a
 	// port-scoped entry "host:port" matches that host AND port only; a

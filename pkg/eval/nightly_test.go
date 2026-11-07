@@ -362,8 +362,19 @@ func TestNightlySuiteFileLoads(t *testing.T) {
 	}
 	// Mutant this kills: the suite YAML malformed (a scenario lost its
 	// end-state assertion or allowlist) — validation counts catch it.
-	if len(s.Scenarios) != 10 {
-		t.Fatalf("scenarios = %d, want 10", len(s.Scenarios))
+	// 11 = the ten browser-use fixtures + the listing-verify scenario
+	// (the published-listing verification wired into the nightly).
+	if len(s.Scenarios) != 11 {
+		t.Fatalf("scenarios = %d, want 11", len(s.Scenarios))
+	}
+	var hasListingVerify bool
+	for _, sc := range s.Scenarios {
+		if sc.Executor == "listing-verify" && sc.Verify != nil {
+			hasListingVerify = true
+		}
+	}
+	if !hasListingVerify {
+		t.Fatal("the nightly carries no listing-verify scenario with a record")
 	}
 	if s.Defaults.Repeats != 3 {
 		t.Fatalf("default repeats = %d, want 3 (pass@3 epochs)", s.Defaults.Repeats)
