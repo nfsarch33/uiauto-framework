@@ -758,3 +758,38 @@ class CoercedProseIsNotASuccess(unittest.TestCase):
         done = self._done('{"action": [{"text": "DRAFT NOT LIVE"}]}')
         self.assertEqual(done["text"], "DRAFT NOT LIVE")
         self.assertIs(done["success"], False)
+
+
+class AgentKwargsVisionEnv(unittest.TestCase):
+    """BU_USE_VISION=false runs the agent text-only (the local tier's
+    text-only model rejects image content); the default keeps vision so
+    multimodal upstreams are unchanged."""
+
+    def test_default_env_keeps_vision_unmentioned(self):
+        import os
+        from server import _agent_kwargs
+        os.environ.pop("BU_USE_VISION", None)
+        kw = _agent_kwargs({"url": "http://x/"})
+        self.assertNotIn("use_vision", kw)
+        self.assertEqual(kw["initial_actions"], [{"navigate": {"url": "http://x/", "new_tab": False}}])
+
+    def test_false_env_disables_vision(self):
+        import os
+        from server import _agent_kwargs
+        old = os.environ.get("BU_USE_VISION")
+        os.environ["BU_USE_VISION"] = "false"
+        try:
+            kw = _agent_kwargs({})
+            self.assertIs(kw.get("use_vision"), False)
+            self.assertNotIn("initial_actions", kw)
+        finally:
+            if old is None:
+                os.environ.pop("BU_USE_VISION", None)
+            else:
+                os.environ["BU_USE_VISION"] = old
+
+    def test_no_url_carries_no_initial_actions(self):
+        import os
+        from server import _agent_kwargs
+        os.environ.pop("BU_USE_VISION", None)
+        self.assertEqual(_agent_kwargs({}), {})

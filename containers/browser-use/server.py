@@ -600,6 +600,25 @@ def _resolve_llm(req):
     return _llm(base_url, model)
 
 
+def _agent_kwargs(req):
+    """The Agent() kwargs a request carries.
+
+    BU_USE_VISION=false runs the agent text-only: the page is described
+    through the DOM extract instead of screenshots. A text-only model (the
+    local tier the lane is pinned to) rejects image content with "At most
+    0 image(s) may be provided" — vision stays the default so multimodal
+    upstreams are unchanged. The request's url runs as the agent's initial
+    navigation (inside Agent.run(), after the session starts).
+    """
+    kwargs = {}
+    if os.environ.get("BU_USE_VISION", "true").strip().lower() in ("false", "0", "no"):
+        kwargs["use_vision"] = False
+    url = req.get("url") or ""
+    if url:
+        kwargs["initial_actions"] = [{"navigate": {"url": url, "new_tab": False}}]
+    return kwargs
+
+
 def _resolve_max_steps(req):
     try:
         max_steps = int(req.get("max_steps", 25))
@@ -673,10 +692,7 @@ async def _run(req):
     # BrowserSession.navigate_to directly is a silent no-op on a session
     # that has not started (browser-use 0.13.10 returns early when no
     # target is focused), so navigation must NOT happen here.
-    agent_kwargs = {}
-    url = req.get("url") or ""
-    if url:
-        agent_kwargs["initial_actions"] = [{"navigate": {"url": url, "new_tab": False}}]
+    agent_kwargs = _agent_kwargs(req)
     agent = Agent(task=task + JSON_ONLY_SUFFIX, llm=llm, browser=browser, max_steps=max_steps, **agent_kwargs)
 
     started = time.monotonic()
