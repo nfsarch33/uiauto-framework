@@ -1,6 +1,10 @@
 package comparison
 
-import "math"
+import (
+	"math"
+
+	"github.com/nfsarch33/uiauto-framework/pkg/stats"
+)
 
 // McNemar computes McNemar's chi-squared statistic and approximate p-value
 // for a 2x2 contingency table of paired binary outcomes.
@@ -32,46 +36,8 @@ func McNemar(b, c int) (chiSq float64, pValue float64) {
 		chiSq = (diff * diff) / float64(n)
 	}
 
-	// Approximate p-value from chi-squared distribution (1 df)
-	pValue = chiSquaredSurvival(chiSq, 1)
-	return chiSq, pValue
-}
-
-// chiSquaredSurvival computes the survival function P(X > x) for chi-squared
-// with k degrees of freedom using the regularized incomplete gamma function.
-func chiSquaredSurvival(x float64, k int) float64 {
-	if x <= 0 {
-		return 1.0
-	}
-	return 1.0 - regularizedGammaP(float64(k)/2.0, x/2.0)
-}
-
-// regularizedGammaP computes the regularized lower incomplete gamma function
-// P(a, x) = gamma(a, x) / Gamma(a) using series expansion.
-func regularizedGammaP(a, x float64) float64 {
-	if x < 0 {
-		return 0
-	}
-	if x == 0 {
-		return 0
-	}
-
-	// Series expansion: P(a,x) = e^(-x) * x^a * sum_{n=0}^{inf} x^n / (a*(a+1)*...*(a+n))
-	sum := 1.0 / a
-	term := 1.0 / a
-	for n := 1; n < 200; n++ {
-		term *= x / (a + float64(n))
-		sum += term
-		if math.Abs(term/sum) < 1e-14 {
-			break
-		}
-	}
-
-	logP := -x + a*math.Log(x) - lgamma(a) + math.Log(sum)
-	return math.Exp(logP)
-}
-
-func lgamma(x float64) float64 {
-	v, _ := math.Lgamma(x)
-	return v
+	// The p-value is the exact two-sided binomial test on the discordant pairs
+	// (pkg/stats): the chi-squared approximation is poor exactly where it is used,
+	// on small discordant counts. chiSq stays the reported test statistic.
+	return chiSq, stats.McNemarExact(b, c)
 }
