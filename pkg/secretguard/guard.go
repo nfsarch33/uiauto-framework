@@ -112,9 +112,31 @@ func isOnePassword(proc string) bool {
 	return strings.Contains(p, "1password") || p == "op.exe"
 }
 
+// windowsKeyTokens are the spellings a Windows-key chord can carry. The
+// check is deny-by-token, never deny-by-substring: a substring test fails
+// open on "Windows+R" ("win+" is not a substring of "windows+r"), on a bare
+// "Win", on "LWin"/"RWin", and on Ctrl+Esc (which opens Start).
+var windowsKeyTokens = map[string]bool{
+	"win": true, "lwin": true, "rwin": true, "windows": true,
+	"meta": true, "super": true, "cmd": true,
+}
+
 func isWindowsKeyShortcut(action string) bool {
 	a := strings.ToLower(action)
-	return strings.Contains(a, "win+") || strings.Contains(a, "meta+") || strings.Contains(a, "super+")
+	// strip everything that is not a key token separator
+	for _, tok := range strings.FieldsFunc(a, func(r rune) bool {
+		return r == '+' || r == ':' || r == ' ' || r == '-' || r == '_' || r == '.'
+	}) {
+		if windowsKeyTokens[tok] {
+			return true
+		}
+	}
+	// Ctrl+Esc opens the Start menu on every Windows version: a Windows-key
+	// chord by another door.
+	if strings.Contains(a, "ctrl") && strings.Contains(a, "esc") {
+		return true
+	}
+	return false
 }
 
 func allowed(list []string, proc string) bool {

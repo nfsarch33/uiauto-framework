@@ -96,7 +96,7 @@ func TestInputAllowlistAndWindowsKey(t *testing.T) {
 	if err := g.CheckInput("Type"); err != nil {
 		t.Fatalf("input on the allowlisted process is allowed: %v", err)
 	}
-	for _, sc := range []string{"Win+R", "Win+X", "Meta+L"} {
+	for _, sc := range []string{"Win+R", "Win+X", "Meta+L", "Win", "Windows+R", "LWin", "RWin", "Ctrl+Esc"} {
 		if err := g.CheckInput("Shortcut:" + sc); !Refused(err) {
 			t.Fatalf("%s must be refused on every window", sc)
 		}
